@@ -152,7 +152,8 @@ examples/breakdown-cartridge/ M2 drop-A metalcore breakdown (inline DSP)
 examples/host-dsp-cartridge/ M3 chug crunched + reverbed by host DSP imports
 examples/synthcore-track/    M5 "Eutectic Point" — a ~70s synth-metal track
 examples/sampled-guitar/     v2 Karplus-Strong pluck via the host sampler
-  src/sampler.rs (host)      WAV library + interpolating playback voices
+examples/multisampled-guitar/ v2.1 multisampled instrument (nearest-zone)
+  src/sampler.rs (host)      WAV library + interpolating voices + multisample
 ```
 
 ## Sample playback (v2)
@@ -175,6 +176,22 @@ let block = voice.render(num_frames);
 external files; drop a `guitar.wav` into the samples dir and it uses that
 instead. This is the only route to literal recorded timbre — pure synthesis
 caps out at synthcore.
+
+For a believable instrument across a wide range, use a **multisample** — several
+root samples, host picks the nearest zone per note and shifts only the
+remainder (a single sample stretched across an octave goes rubbery):
+
+```rust
+use jukebox_cartridge_sdk::sampler::{Multisample, Sample, SampleVoice};
+
+let inst = Multisample::new();
+inst.add(&Sample::from_library("guitar_a1").unwrap(), 55.0);   // A1
+inst.add(&Sample::from_library("guitar_a2").unwrap(), 110.0);  // A2
+voice.trigger_pitched(&inst, note_hz, 0.8);                    // nearest zone
+```
+
+See `examples/multisampled-guitar` (3 synthesised zones; drop
+`guitar_a1/a2/a3.wav` into the samples dir for real ones).
 
 Hear the worked track: `just play synthcore-track` (drop-A, A phrygian; intro →
 verse riff → breakdown → lead chorus → outro, ~70 s). Pure synthesis, so it
