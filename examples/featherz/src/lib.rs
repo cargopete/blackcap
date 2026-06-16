@@ -1,79 +1,80 @@
-//! "featherz" — the aggressive one. Fuses the two favourites: the **sampled
-//! Karplus-Strong guitar** of *Plucked* (host sampler, pitch-shifted, crunched)
-//! as the riff/lead, and the **wobble drops + gated chug + breakdowns** of
-//! *Blackstar* — then pushes it harder: A phrygian / drop-A at 184 bpm, a
-//! hard-clipped buzzsaw chug, and a proper blast-beat section. Instrumental, no
-//! verses; it lives in the drop ↔ blast ↔ breakdown churn.
+//! "featherz" — aggressive and haunting. Keeps the sampled Karplus guitar of
+//! *Plucked* (that creepy, organ-ish, haunted character) but pushes it dark and
+//! heavy rather than bright/Eastern: A phrygian with the tritone (eb) for dread,
+//! drop-A, a soft reverb-drenched detuned-saw **choir pad** underneath, a low
+//! haunted pluck melody, and a hard-clipped buzzsaw chug. No dance-wobble.
+//!
+//! Structure: a haunting swell intro → heavy aggressive sections over the choir
+//! → slow crushing breakdowns that get *slower* toward the end. Instrumental.
 
 use jukebox_cartridge_sdk::dsp::{Reverb, ShapeKind, Waveshaper};
-use jukebox_cartridge_sdk::osc::{white, Osc, Waveform};
+use jukebox_cartridge_sdk::osc::Osc;
+use jukebox_cartridge_sdk::osc::Waveform;
 use jukebox_cartridge_sdk::prelude::*;
 use jukebox_cartridge_sdk::sampler::{Sample, SampleVoice};
 
 const SR: u32 = 48_000;
-const TEMPO: f32 = 184.0;
-const WOBBLE_HZ: f32 = TEMPO / 60.0 * 2.0; // 1/8-note wobble
-const PLUCK_ROOT: f32 = 440.0; // a4 — the Karplus root; riff notes pitch-shift from here
-const VOICES: usize = 6;
+const PLUCK_ROOT: f32 = 220.0; // a3 — darker than before; riff notes shift from here
+const VOICES: usize = 5;
 
 const SONG: TrackerSong = song! {
-    tempo: 184;
+    tempo: 144;
     rows_per_beat: 4; // 16th grid; 2 bars (32 cells) per pattern
 
+    // Haunting swell: choir pad + sparse low pluck, dread building. No bright arp.
     pattern "intro" {
-        lead:      "a3 c4 e4 a4  c4 e4 a4 c5  e4 a4 c5 e5  a4 c5 e5 a5   a3 e4 a4 c5  e4 a4 c5 e5  a4 c5 e5 a5  c5 e5 a5 c6";
-        chug_note: "a1 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    .  .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
-        gate:      "X--- ---- ---- ----  x-x- ---- x-x- xxxx";
-        kick:      "x--- ---- x--- ----  x-x- ---- x-x- xxxx";
-        crash:     "x--- ---- ---- ----  ---- ---- ---- ----";
+        pad:  "a3 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    f3 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
+        lead: "a4 -  -  -   -  -  -  -   bb4 - -  -   -  -  -  -    -  -  -  -   -  -  -  -   eb4 - -  -   -  -  -  -";
+        crash:"x--- ---- ---- ----  ---- ---- ---- ----";
+        kick: "x--- ---- ---- ----  x--- ---- ---- ----";
     }
 
-    pattern "drop" {
-        wobble_note: "a1 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    a1 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
-        chug_note:   "a1 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    a1 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
-        gate:        "X--- --x- X--- ----  X--- --x- X-x- ----";
-        lead:        "a4 -  -  e4  -  -  a4 -   bb4 - -  a4  -  g4 -  -    a4 -  -  e4  -  -  a4 -   c5 -  bb4 -   a4 -  -  -";
-        kick:        "x--- ---- x--- ----  x--- ---- x--- ----";
-        snare:       "---- ---- x--- ----  ---- ---- x--- ----";
-        crash:       "x--- ---- ---- ----  x--- ---- ---- ----";
-    }
-
-    pattern "blast" {
-        lead:      "a4 a4 a4 a4  bb4 bb4 a4 a4  g4 g4 a4 a4  e4 e4 a4 a4   a4 a4 a4 a4  bb4 bb4 c5 c5  a4 a4 g4 g4  e4 e4 -  -";
-        chug_note: "a1 .  .  .   bb1 .  .  .   a1 .  .  .   g1 .  .  .    a1 .  .  .   bb1 .  .  .   a1 .  f1 .   e1 .  .  .";
-        gate:      "x-xx x-xx x-xx xxxx  x-xx x-xx x-xx xxxx";
-        kick:      "xxxx xxxx xxxx xxxx  xxxx xxxx xxxx xxxx";
-        snare:     "--x- --x- --x- --x-  --x- --x- --x- --x-";
+    // Heavy + haunting: buzzsaw chug + choir pad + a low phrygian pluck melody.
+    pattern "heavy" {
+        pad:       "a3 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    f3 .  .  .   .  .  .  .   g3 .  .  .   .  .  .  .";
+        lead:      "a4 -  -  -   eb5 - -  -   c5 -  -  -   bb4 - a4 -    a4 -  -  -   f4 -  -  -   g4 -  e4 -   a4 -  -  -";
+        chug_note: "a1 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    a1 .  .  .   .  .  .  .   g1 .  .  .   f1 .  .  .";
+        gate:      "X-x- -x-x X-x- -x--  X-x- -x-x X-x- xx--";
+        kick:      "x--x --x- x--x --x-  x--x --x- x--x --xx";
+        snare:     "---- x--- ---- x---  ---- x--- ---- x---";
         crash:     "x--- ---- ---- ----  x--- ---- ---- ----";
     }
 
-    // The breakdown drops to 120 bpm — a real half-time tempo change, the way a
-    // proper metalcore/deathcore breakdown lurches slower than the rest.
+    // Slow crushing breakdown (the part loved). Big spaced stomps, choir under,
+    // NO fast bursts. 120 bpm.
     pattern "breakdown" @120 {
+        pad:       "a3 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    .  .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
         chug_note: "a1 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    .  .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
-        gate:      "X--- x-xx X--- --xx  X-x- x-xx X--- ----";
-        kick:      "x--- x-xx x--- --xx  x-x- x-xx x--- ----";
-        snare:     "---- ---- ---- ----  ---- ---- x--- ----";
-        crash:     "x--- ---- ---- ----  ---- ---- ---- x---";
+        gate:      "X--- ---- --x- ----  X--- ---- X--- ----";
+        kick:      "x--- ---- --x- ----  x--- ---- x--- ----";
+        snare:     "---- ---- x--- ----  ---- ---- x--- ----";
+        crash:     "x--- ---- ---- ----  ---- ---- ---- ----";
     }
 
-    pattern "outro" {
-        chug_note:   "a1 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    .  .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
-        wobble_note: "a1 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    .  .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
-        gate:        "X--- ---- ---- ----  ---- ---- ---- ----";
-        crash:       "x--- ---- ---- ----  ---- ---- ---- ----";
-        kick:        "x--- ---- ---- ----  ---- ---- ---- ----";
+    // The great slow ending: even slower, enormous gaps, final dread. 84 bpm.
+    pattern "ending" @84 {
+        pad:       "a3 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    .  .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
+        chug_note: "a1 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    .  .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
+        gate:      "X--- ---- ---- ----  --x- ---- X--- ----";
+        kick:      "x--- ---- ---- ----  --x- ---- x--- ----";
+        snare:     "---- ---- ---- ----  ---- ---- x--- ----";
+        crash:     "x--- ---- ---- ----  ---- ---- ---- ----";
+    }
+
+    pattern "outro" @84 {
+        pad:       "a3 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    .  .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
+        chug_note: "a1 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    .  .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
+        gate:      "X--- ---- ---- ----  ---- ---- ---- ----";
+        crash:     "x--- ---- ---- ----  ---- ---- ---- ----";
     }
 
     sequence: [
         intro, intro,
-        drop, drop, blast, blast,
+        heavy, heavy, heavy,
         breakdown, breakdown,
-        drop, blast, blast,
-        breakdown, breakdown, breakdown,
-        drop, drop, blast, blast,
-        breakdown, breakdown, breakdown,
-        drop,
+        heavy, heavy,
+        breakdown, breakdown,
+        ending, ending,
         outro,
     ];
 };
@@ -82,7 +83,7 @@ fn karplus_strong(freq: f32, seconds: f32, decay: f32, seed: u64) -> Vec<f32> {
     let n = (SR as f32 * seconds) as usize;
     let p = (SR as f32 / freq).round().max(2.0) as usize;
     let mut state = seed;
-    let mut ring: Vec<f32> = (0..p).map(|_| white(&mut state)).collect();
+    let mut ring: Vec<f32> = (0..p).map(|_| jukebox_cartridge_sdk::osc::white(&mut state)).collect();
     let mut out = Vec::with_capacity(n);
     let mut i = 0;
     for _ in 0..n {
@@ -100,14 +101,13 @@ struct Featherz {
     voices: Vec<SampleVoice>,
     next: usize,
     pluck_shaper: Waveshaper,
+    pad: SawSuperVoice<5>,
+    pad_env: Adsr,
+    pad_lp: Svf,
     chug: SquareVoice,
     chug_gate: Gate,
     chug_shaper: Waveshaper,
     sub: Osc,
-    wobble: Osc,
-    wobble_svf: Svf,
-    wobble_env: Adsr,
-    lfo_phase: f32,
     kick: KickVoice,
     snare: SnareVoice,
     crash: CymbalVoice,
@@ -121,38 +121,40 @@ impl Player for Featherz {
             return Err(format!("featherz is authored at {SR} Hz, host offered {sample_rate} Hz"));
         }
 
-        // The lead/riff: a Karplus-Strong pluck, or guitar.wav if you've got one.
         let pluck = Sample::from_library("guitar")
-            .unwrap_or_else(|| Sample::from_pcm(&karplus_strong(PLUCK_ROOT, 0.5, 0.993, 0xFEA37E_42)));
+            .unwrap_or_else(|| Sample::from_pcm(&karplus_strong(PLUCK_ROOT, 0.7, 0.995, 0xFEA37E_42)));
 
-        // Aggressive lead crunch.
+        // Haunted lead — moderate drive, darker tone (less bright/Eastern).
         let pluck_shaper = Waveshaper::new(SR, 4);
-        pluck_shaper.set_shape(ShapeKind::AsymTanh, 4.5, 0.1);
-        pluck_shaper.set_tone(150.0, 9000.0);
+        pluck_shaper.set_shape(ShapeKind::AsymTanh, 3.0, 0.08);
+        pluck_shaper.set_tone(120.0, 6500.0);
 
-        // Brutal buzzsaw chug — hard-clip, heavily oversampled so it doesn't fizz.
+        // Aggressive buzzsaw chug.
         let chug_shaper = Waveshaper::new(SR, 4);
-        chug_shaper.set_shape(ShapeKind::HardClip, 5.0, 0.0);
-        chug_shaper.set_tone(85.0, 7000.0);
+        chug_shaper.set_shape(ShapeKind::HardClip, 4.5, 0.0);
+        chug_shaper.set_tone(85.0, 6500.0);
+
+        // Soft choir pad: detuned saws rolled off and drowned in reverb.
+        let mut pad_lp = Svf::new(SR);
+        pad_lp.set_params(1400.0, 0.7);
 
         let reverb = Reverb::new(SR);
-        reverb.set_params(0.42, 0.6, 0.14); // dry — aggression over wash
+        reverb.set_params(0.78, 0.4, 0.32); // lush + haunting, but it's a send
 
-        log::log("featherz loaded — A phrygian, drop-A, 184 bpm. No survivors.");
+        log::log("featherz loaded — aggressive + haunting, A phrygian, drop-A.");
 
         Ok(Self {
             pluck,
             voices: (0..VOICES).map(|_| SampleVoice::new()).collect(),
             next: 0,
             pluck_shaper,
+            pad: SawSuperVoice::new(SR, 24.0),
+            pad_env: Adsr::new(SR, 0.18, 0.40, 0.70, 0.9),
+            pad_lp,
             chug: SquareVoice::new(SR, 0.5),
-            chug_gate: Gate::new(SR, 1.5, 6.0),
+            chug_gate: Gate::new(SR, 1.5, 7.0),
             chug_shaper,
             sub: Osc::new(SR, Waveform::Sine),
-            wobble: Osc::new(SR, Waveform::Saw),
-            wobble_svf: Svf::new(SR),
-            wobble_env: Adsr::new(SR, 0.01, 3.0, 0.0, 0.4),
-            lfo_phase: 0.0,
             kick: KickVoice::metal(SR),
             snare: SnareVoice::metalcore(SR),
             crash: CymbalVoice::china(SR),
@@ -166,8 +168,12 @@ impl Player for Featherz {
 
         for ev in self.song.events_in_range(start_frame, num_frames as u64) {
             match (ev.lane, ev.cell) {
+                ("pad", Cell::Note(note)) => {
+                    self.pad.note_on(note.hz());
+                    self.pad_env.trigger();
+                }
                 ("lead", Cell::Note(note)) => {
-                    self.voices[self.next].trigger(&self.pluck, note.hz() / PLUCK_ROOT, 0.85);
+                    self.voices[self.next].trigger(&self.pluck, note.hz() / PLUCK_ROOT, 0.8);
                     self.next = (self.next + 1) % VOICES;
                 }
                 ("chug_note", Cell::Note(note)) => {
@@ -177,10 +183,6 @@ impl Player for Featherz {
                 ("gate", Cell::Hit { accent }) => self.chug_gate.set(true, if accent { 1.5 } else { 1.0 }),
                 ("gate", Cell::Ghost) => self.chug_gate.set(true, 0.3),
                 ("gate", Cell::Off) => self.chug_gate.set(false, 0.0),
-                ("wobble_note", Cell::Note(note)) => {
-                    self.wobble.set_freq(note.hz());
-                    self.wobble_env.trigger();
-                }
                 ("kick", Cell::Hit { .. }) => self.kick.trigger(),
                 ("snare", Cell::Hit { .. }) => self.snare.trigger(),
                 ("crash", Cell::Hit { .. }) => self.crash.trigger(),
@@ -188,7 +190,17 @@ impl Player for Featherz {
             }
         }
 
-        // Lead: sum the sampled-pluck voices → aggressive crunch.
+        // Choir pad: detuned saws → lowpass → envelope.
+        let pad_raw = self.pad.render_block(num_frames);
+        let pad_env = self.pad_env.render_block(num_frames);
+        let pad_sig: Vec<f32> = (0..n)
+            .map(|i| {
+                let (lp, _, _) = self.pad_lp.process_one(pad_raw[i]);
+                lp * pad_env[i]
+            })
+            .collect();
+
+        // Haunted lead: sampled pluck voices → moderate crunch.
         let mut pluck_bus = vec![0.0f32; n];
         for voice in &self.voices {
             let block = voice.render(num_frames);
@@ -198,41 +210,31 @@ impl Player for Featherz {
         }
         let pluck_crunch = self.pluck_shaper.process(&pluck_bus);
 
-        // Chug: gate (captured for the sub too) → hard-clip buzzsaw.
+        // Chug: gate (kept for the sub) → hard-clip buzzsaw.
         let chug_raw = self.chug.render_block(num_frames);
         let chug_g: Vec<f32> = (0..n).map(|_| self.chug_gate.next()).collect();
         let chug_gated: Vec<f32> = (0..n).map(|i| chug_raw[i] * chug_g[i]).collect();
         let chug_crunch = self.chug_shaper.process(&chug_gated);
 
         let sub_raw = self.sub.render_block(num_frames);
-        let wobble_env = self.wobble_env.render_block(num_frames);
         let kick = self.kick.render_block(num_frames);
         let snare = self.snare.render_block(num_frames);
         let crash = self.crash.render_block(num_frames);
 
-        let send: Vec<f32> = (0..n).map(|i| 0.16 * pluck_crunch[i]).collect();
+        // Reverb send: the pad (mostly) and the pluck — the haunting space.
+        let send: Vec<f32> = (0..n).map(|i| 0.5 * pad_sig[i] + 0.24 * pluck_crunch[i]).collect();
         let (wet_l, wet_r) = self.reverb.process(&send, &send);
 
-        let lfo_inc = WOBBLE_HZ / SR as f32;
         let mut out = Vec::with_capacity(n * 2);
         for i in 0..n {
             let duck = 1.0 - 0.5 * kick[i].abs().min(1.0);
-
-            // Dubstep wobble (drops only — silent elsewhere via its envelope).
-            let lfo = 0.5 * (1.0 + (core::f32::consts::TAU * self.lfo_phase).sin());
-            self.lfo_phase = (self.lfo_phase + lfo_inc).fract();
-            self.wobble_svf.set_params(130.0 + 3200.0 * lfo * lfo, 4.0);
-            let (wlp, _, _) = self.wobble_svf.process_one(self.wobble.next());
-            let wob = soft_clip(wlp * 3.5) * wobble_env[i];
-
-            let dry = 0.30 * pluck_crunch[i]
+            let dry = 0.16 * pad_sig[i]
+                + 0.26 * pluck_crunch[i]
                 + 0.50 * chug_crunch[i] * duck
-                + 0.42 * wob
                 + 0.28 * sub_raw[i] * chug_g[i] * duck
-                + 0.95 * kick[i]
-                + 0.62 * snare[i]
+                + 0.92 * kick[i]
+                + 0.60 * snare[i]
                 + 0.26 * crash[i];
-
             out.push(soft_clip(dry + wet_l[i]));
             out.push(soft_clip(dry + wet_r[i]));
         }
@@ -244,14 +246,13 @@ impl Player for Featherz {
             v.stop();
         }
         self.pluck_shaper.reset();
+        self.pad.reset();
+        self.pad_env.reset();
+        self.pad_lp.reset();
         self.chug.reset();
         self.chug_gate.reset();
         self.chug_shaper.reset();
         self.sub.reset();
-        self.wobble.reset();
-        self.wobble_svf.reset();
-        self.wobble_env.reset();
-        self.lfo_phase = 0.0;
         self.kick.reset();
         self.snare.reset();
         self.crash.reset();
@@ -273,8 +274,8 @@ impl Player for Featherz {
             }),
             cover_art: None,
             tags: vec![
-                "electronicore".to_string(),
                 "aggressive".to_string(),
+                "haunting".to_string(),
                 "drop-a".to_string(),
             ],
         }

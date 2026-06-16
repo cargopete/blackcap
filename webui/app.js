@@ -141,7 +141,7 @@ function selectTrack(t, li) {
 
   renderArrangement();
   renderLegend();
-  renderDissection();
+  requestAnimationFrame(renderDissection); // after layout, so width is real
   trackerPattern = null;
   renderFromFrac(0);
 
@@ -218,7 +218,13 @@ function renderDissection() {
   }
 
   const cv = $("dissect");
-  const cssW = cv.parentElement.clientWidth || 800;
+  // The real rendered width (canvas is width:100%). Falls back if measured
+  // before layout; a too-narrow read means layout isn't ready, so retry.
+  const cssW = Math.round(cv.getBoundingClientRect().width || cv.parentElement.clientWidth);
+  if (cssW < DISSECT_GUTTER + 40) {
+    requestAnimationFrame(renderDissection);
+    return;
+  }
   const h = DISSECT_HEAD + lanes.length * DISSECT_LANE_H;
   const dpr = window.devicePixelRatio || 1;
   cv.style.height = h + "px";
