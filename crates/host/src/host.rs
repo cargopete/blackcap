@@ -10,18 +10,21 @@ use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use crate::wit::jukebox::cartridge::dsp::ShapeKind;
 use crate::wit::jukebox::cartridge::{dsp, log, types};
 
-/// Store data. Carries the WASI context (std cartridges need it) and the
-/// resource table shared by WASI and our DSP resources.
+/// Store data. Carries the WASI context (std cartridges need it), the resource
+/// table shared by WASI and our DSP/sampler resources, and the device sample
+/// rate (for resampling library samples).
 pub struct HostState {
     ctx: WasiCtx,
-    table: ResourceTable,
+    pub(crate) table: ResourceTable,
+    pub(crate) sample_rate: u32,
 }
 
 impl HostState {
-    pub fn new() -> Self {
+    pub fn new(sample_rate: u32) -> Self {
         Self {
             ctx: WasiCtxBuilder::new().inherit_stdio().build(),
             table: ResourceTable::new(),
+            sample_rate,
         }
     }
 }

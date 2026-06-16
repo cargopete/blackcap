@@ -37,7 +37,7 @@ impl Cartridge {
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
         wit::Cartridge::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
 
-        let mut store = Store::new(engine, HostState::new());
+        let mut store = Store::new(engine, HostState::new(device_sr));
         store.set_epoch_deadline(EPOCH_BUDGET);
 
         let world = wit::Cartridge::instantiate(&mut store, &component, &linker)?;

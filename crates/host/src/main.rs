@@ -12,6 +12,7 @@ mod host;
 mod master;
 mod mixer;
 mod player;
+mod sampler;
 mod shared;
 mod source;
 mod tui;

@@ -11,5 +11,7 @@ wasmtime::component::bindgen!({
         "jukebox:cartridge/dsp.reverb": crate::host::ReverbNode,
         "jukebox:cartridge/dsp.delay": crate::host::DelayNode,
         "jukebox:cartridge/dsp.waveshaper": crate::host::ShaperNode,
+        "jukebox:cartridge/sampler.sample": crate::sampler::SampleNode,
+        "jukebox:cartridge/sampler.sample-voice": crate::sampler::SampleVoiceNode,
     },
 });
