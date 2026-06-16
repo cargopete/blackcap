@@ -15,6 +15,31 @@ pub struct SampleNode {
     data: Arc<[f32]>,
 }
 
+/// A pitched instrument: zones of (root pitch, PCM). Playing a target pitch
+/// picks the nearest root (in cents) and shifts only the remainder.
+pub struct MultisampleNode {
+    zones: Vec<(f32, Arc<[f32]>)>,
+}
+
+impl MultisampleNode {
+    fn new() -> Self {
+        Self { zones: Vec::new() }
+    }
+
+    /// Nearest zone to `target_hz`; returns (pcm, playback speed).
+    fn nearest(&self, target_hz: f32) -> Option<(Arc<[f32]>, f64)> {
+        self.zones
+            .iter()
+            .filter(|(root, _)| *root > 0.0)
+            .min_by(|(ra, _), (rb, _)| {
+                let da = (target_hz / ra).ln().abs();
+                let db = (target_hz / rb).ln().abs();
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|(root, data)| (data.clone(), (target_hz / root) as f64))
+    }
+}
+
 /// A single-sample playback voice with fractional (linear-interpolated)
 /// read position, so a sample can be pitch-shifted by varying `speed`.
 pub struct SampleVoiceNode {
@@ -39,6 +64,18 @@ impl SampleVoiceNode {
             looping: false,
             loop_start: 0.0,
             loop_end: 0.0,
+        }
+    }
+
+    fn arm(&mut self, data: Arc<[f32]>, speed: f32, gain: f32) {
+        let len = data.len();
+        self.sample = Some(data);
+        self.pos = 0.0;
+        self.speed = speed.max(0.0) as f64;
+        self.gain = gain;
+        self.active = true;
+        if !self.looping {
+            self.loop_end = len as f64;
         }
     }
 
@@ -159,6 +196,28 @@ impl sampler::HostSample for HostState {
     }
 }
 
+impl sampler::HostMultisample for HostState {
+    fn new(&mut self) -> Resource<MultisampleNode> {
+        self.table.push(MultisampleNode::new()).expect("resource table push")
+    }
+
+    fn add(&mut self, self_: Resource<MultisampleNode>, sample: Resource<SampleNode>, root_hz: f32) {
+        let data = self.table.get(&sample).ok().map(|s| s.data.clone());
+        if let (Some(data), Ok(ms)) = (data, self.table.get_mut(&self_)) {
+            ms.zones.push((root_hz, data));
+        }
+    }
+
+    fn zone_count(&mut self, self_: Resource<MultisampleNode>) -> u32 {
+        self.table.get(&self_).map(|m| m.zones.len() as u32).unwrap_or(0)
+    }
+
+    fn drop(&mut self, rep: Resource<MultisampleNode>) -> wasmtime::Result<()> {
+        self.table.delete(rep)?;
+        Ok(())
+    }
+}
+
 impl sampler::HostSampleVoice for HostState {
     fn new(&mut self) -> Resource<SampleVoiceNode> {
         self.table.push(SampleVoiceNode::new()).expect("resource table push")
@@ -168,15 +227,14 @@ impl sampler::HostSampleVoice for HostState {
         // Borrowed sample: read its data (don't delete), then arm the voice.
         let data = self.table.get(&sample).ok().map(|s| s.data.clone());
         if let (Some(data), Ok(voice)) = (data, self.table.get_mut(&self_)) {
-            let len = data.len();
-            voice.sample = Some(data);
-            voice.pos = 0.0;
-            voice.speed = speed.max(0.0) as f64;
-            voice.gain = gain;
-            voice.active = true;
-            if !voice.looping {
-                voice.loop_end = len as f64;
-            }
+            voice.arm(data, speed, gain);
+        }
+    }
+
+    fn trigger_pitched(&mut self, self_: Resource<SampleVoiceNode>, ms: Resource<MultisampleNode>, target_hz: f32, gain: f32) {
+        let picked = self.table.get(&ms).ok().and_then(|m| m.nearest(target_hz));
+        if let (Some((data, speed)), Ok(voice)) = (picked, self.table.get_mut(&self_)) {
+            voice.arm(data, speed as f32, gain);
         }
     }
 

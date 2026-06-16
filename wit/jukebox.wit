@@ -112,6 +112,18 @@ interface sampler {
     frame-count: func() -> u64;
   }
 
+  /// A pitched instrument: several samples each tagged with their natural
+  /// (root) pitch. Playing a target pitch picks the nearest-rooted zone and
+  /// shifts only the small remainder — far more natural than stretching one
+  /// sample across an octave. Build from library wavs (e.g. guitar_a1/a2/a3) or
+  /// cartridge PCM.
+  resource multisample {
+    constructor();
+    /// Add a zone: this sample's natural pitch is `root-hz`.
+    add: func(sample: borrow<sample>, root-hz: f32);
+    zone-count: func() -> u32;
+  }
+
   /// A sample-playback voice: plays one sample at a time, pitch-shifted by
   /// resampling. Hold several for polyphony.
   resource sample-voice {
@@ -119,6 +131,9 @@ interface sampler {
     /// (Re)trigger `sample` at `speed` (1.0 = as recorded, 2.0 = octave up via
     /// faster playback) and linear `gain`, from the start.
     trigger: func(sample: borrow<sample>, speed: f32, gain: f32);
+    /// (Re)trigger the nearest zone of `ms` for `target-hz`, shifting only the
+    /// remainder. Silent if the multisample has no zones.
+    trigger-pitched: func(ms: borrow<multisample>, target-hz: f32, gain: f32);
     /// Loop between two frames of the sample (in the sample's own frames).
     set-loop: func(enabled: bool, start-frame: u64, end-frame: u64);
     /// Render the next mono block; silence once finished (unless looping).
