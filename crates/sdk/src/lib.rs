@@ -38,6 +38,9 @@ pub use bindings::jukebox::cartridge::types::LoopPoint;
 /// `dsp::Waveshaper`, `dsp::ShapeKind`, and the stateless `dsp::osc_*` functions.
 /// (The SDK's *inline* DSP helpers live in [`fx`].)
 pub use bindings::jukebox::cartridge::dsp;
+/// Host sample playback: `sampler::Sample::from_library`/`from_pcm` and
+/// `sampler::SampleVoice` for pitched, interpolated one-shot/looped playback.
+pub use bindings::jukebox::cartridge::sampler;
 /// Host `log` import — `log::log("…")` prints to the host's stderr.
 pub use bindings::jukebox::cartridge::log;
 
@@ -145,7 +148,7 @@ macro_rules! export_player {
 /// Everything a typical cartridge needs in one glob.
 pub mod prelude {
     pub use crate::fx::{interleave, soft_clip, OnePoleHp, OnePoleLp, Svf};
-    pub use crate::{dsp, log};
+    pub use crate::{dsp, log, sampler};
     pub use crate::env::{Adsr, Gate};
     pub use crate::osc::{Noise, Osc, SuperSaw, Waveform};
     pub use crate::perc::{CymbalVoice, KickVoice, SnareVoice};
