@@ -160,6 +160,7 @@ examples/breakdown-cartridge/ drop-A breakdown, all inline DSP
 examples/host-dsp-cartridge/  the same chug via host DSP imports (~30% smaller)
 examples/synthcore-track/     "Eutectic Point" — ~70s synth-metal track
 examples/severance/           "Severance" — ~83s synth-metalcore track
+examples/blackstar/           "Blackstar" — ~71s electronicore (wobble drops)
 examples/sampled-guitar/      Karplus-Strong pluck via the host sampler
 examples/multisampled-guitar/ multisampled instrument (nearest-zone)
 ```
@@ -206,13 +207,18 @@ See `examples/multisampled-guitar` (3 synthesised zones; drop
 Worked songs, written entirely in the `song!{}` DSL:
 
 ```sh
+just play blackstar        # electronicore, A phrygian / drop-A, ~71 s
 just play severance        # synth-metalcore, D minor / drop-D, ~83 s
 just play synthcore-track  # "Eutectic Point" — synth-metal, A phrygian, ~70 s
 ```
 
+- **Blackstar** — The Browning / "Skybreaker" flavour, the heavy end:
+  machine-gun double-bass, chromatic drop-A chugs, hard-driven supersaw lead,
+  and half-time **dubstep-wobble** drops (an LFO-swept resonant filter on a
+  driven saw). Dry and brutal.
 - **Severance** — Erra / early-Asking-Alexandria flavour: ambient supersaw
   intro → palm-mute gallop verse → soaring chorus over Dm–Bb–F–C → half-time
-  breakdown → the euphoric trance-synth drop → reprise → outro.
+  breakdown → euphoric trance-synth drop → reprise → outro.
 - **Eutectic Point** — drop-A synth-metal: intro → verse riff → breakdown →
   lead chorus → outro.
 
