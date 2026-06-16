@@ -8,3 +8,6 @@ Cargo.lock.bak
 # Web UI generated artifacts (regenerate with webui/build.sh)
 webui/tracks/
 webui/tracks.json
+
+# Generated media (cover renders, video exports)
+/media/
