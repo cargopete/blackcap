@@ -21,6 +21,9 @@ pub struct Worker {
     handle: Option<JoinHandle<()>>,
     pub title: String,
     pub artist: String,
+    pub sample_rate: u32,
+    pub duration_frames: u64,
+    pub tags: Vec<String>,
 }
 
 impl Worker {
@@ -44,7 +47,16 @@ impl Drop for Worker {
     }
 }
 
-fn spawn(source: BlockSource, block_frames: u32, title: String, artist: String) -> Worker {
+#[allow(clippy::too_many_arguments)]
+fn spawn(
+    source: BlockSource,
+    block_frames: u32,
+    title: String,
+    artist: String,
+    sample_rate: u32,
+    duration_frames: u64,
+    tags: Vec<String>,
+) -> Worker {
     let (producer, consumer) = RingBuffer::<f32>::new(RING_CAPACITY);
     let running = Arc::new(AtomicBool::new(true));
     let handle = {
@@ -57,6 +69,9 @@ fn spawn(source: BlockSource, block_frames: u32, title: String, artist: String) 
         handle: Some(handle),
         title,
         artist,
+        sample_rate,
+        duration_frames,
+        tags,
     }
 }
 
@@ -67,6 +82,9 @@ pub fn spawn_sine(sample_rate: u32, freq: f32, amplitude: f32, block_frames: u32
         block_frames,
         format!("Sine {freq:.0} Hz"),
         "blackcap".to_string(),
+        sample_rate,
+        0,
+        vec!["sine".to_string()],
     )
 }
 
@@ -80,8 +98,8 @@ pub fn spawn_cartridge(
     block_frames: u32,
 ) -> Result<Worker> {
     let mut cart = Cartridge::load(engine, path, sample_rate)?;
-    let title = cart.title.clone();
-    let artist = cart.artist.clone();
+    let (title, artist) = (cart.title.clone(), cart.artist.clone());
+    let (sr, duration, tags) = (cart.sample_rate, cart.duration_frames, cart.tags.clone());
     let source: BlockSource = Box::new(move |start, num| cart.render(start, num));
-    Ok(spawn(source, block_frames, title, artist))
+    Ok(spawn(source, block_frames, title, artist, sr, duration, tags))
 }

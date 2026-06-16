@@ -12,6 +12,7 @@ use crossbeam_channel::Receiver;
 use rtrb::{Consumer, Producer};
 
 use crate::master::MasterChain;
+use crate::shared::Shared;
 
 /// A request to the mixer to bring in a new source.
 pub struct Switch {
@@ -26,6 +27,8 @@ pub struct Mixer {
     running: Arc<AtomicBool>,
     block_frames: usize,
     master: MasterChain,
+    shared: Arc<Shared>,
+    vu: f32,
 
     current: Option<Consumer<f32>>,
     incoming: Option<Consumer<f32>>,
@@ -40,6 +43,7 @@ impl Mixer {
         running: Arc<AtomicBool>,
         block_frames: usize,
         master: MasterChain,
+        shared: Arc<Shared>,
     ) -> Self {
         Self {
             output,
@@ -47,6 +51,8 @@ impl Mixer {
             running,
             block_frames,
             master,
+            shared,
+            vu: 0.0,
             current: None,
             incoming: None,
             fade_pos: 0,
@@ -66,12 +72,23 @@ impl Mixer {
 
             // With no source yet (watch mode before the first drop) next_frame
             // returns silence, so the device never underruns.
+            let mut block_peak = 0.0f32;
             for _ in 0..self.block_frames {
                 let (l, r) = self.next_frame();
                 let (l, r) = self.master.process(l, r);
+                block_peak = block_peak.max(l.abs()).max(r.abs());
                 let _ = self.output.push(l);
                 let _ = self.output.push(r);
             }
+
+            // Smoothed VU (fast attack, slow release) + timeline frame count.
+            self.vu = if block_peak > self.vu {
+                block_peak
+            } else {
+                self.vu * 0.8 + block_peak * 0.2
+            };
+            self.shared.set_vu(self.vu);
+            self.shared.add_frames(self.block_frames as u64);
         }
     }
 

@@ -19,11 +19,9 @@ pub struct Cartridge {
     world: wit::Cartridge,
     pub title: String,
     pub artist: String,
-    // Surfaced for the metadata browser at M6.
-    #[allow(dead_code)]
     pub sample_rate: u32,
-    #[allow(dead_code)]
     pub duration_frames: u64,
+    pub tags: Vec<String>,
 }
 
 impl Cartridge {
@@ -66,6 +64,7 @@ impl Cartridge {
             title: meta.title,
             artist: meta.artist,
             duration_frames: meta.duration_frames,
+            tags: meta.tags,
         })
     }
 
