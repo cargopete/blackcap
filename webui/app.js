@@ -2,7 +2,8 @@
 
 let SR = 48000;
 let track = null;       // selected track
-let timeline = [];      // [{name, pattern, startSec, durSec, rows, secPerRow}]
+let timeline = [];      // [{name, pattern, startSec, durSec, rows, secPerRow}] (per sequence entry)
+let sections = [];      // [{name, startSec, durSec}] — consecutive same-pattern runs merged
 let durationSec = 0;    // total, from song maths
 let trackerPattern = null;
 let trackerCols = [];   // column index -> [cell elements]
@@ -14,12 +15,44 @@ let actx = null, analyser = null, freqData = null;
 
 const $ = (id) => document.getElementById(id);
 
+// Note name -> MIDI number (mirrors the SDK's Note::parse). a4 = 69.
+function parseNoteMidi(s) {
+  const m = /^([a-gA-G])([#sb]?)(-?\d+)$/.exec(s.trim());
+  if (!m) return null;
+  let semi = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1].toLowerCase()];
+  if (m[2] === "#" || m[2] === "s") semi += 1;
+  else if (m[2] === "b") semi -= 1;
+  return (parseInt(m[3], 10) + 1) * 12 + semi;
+}
+
+// Friendly instrument names + colours, so you never need to read a note name.
+const LANE_INFO = {
+  lead: { label: "lead", color: "#1fe0ff" },
+  chug_note: { label: "guitar chug", color: "#ff2d95" },
+  wobble_note: { label: "wobble bass", color: "#a857ff" },
+  bass: { label: "bass", color: "#46e08a" },
+  pad: { label: "pad", color: "#7aa2ff" },
+  gate: { label: "chug rhythm", color: "#ff6fae" },
+  kick: { label: "kick", color: "#ff9d3d" },
+  snare: { label: "snare", color: "#ff5277" },
+  hat: { label: "hi-hat", color: "#ffd479" },
+  crash: { label: "cymbal", color: "#ffe08a" },
+};
+const LANE_ORDER = ["lead", "chug_note", "wobble_note", "bass", "pad", "gate", "kick", "snare", "hat", "crash"];
+function laneInfo(name) {
+  return LANE_INFO[name] || { label: name.replace(/_/g, " "), color: "#28c0a8" };
+}
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
 // --- song! cell tokeniser (mirrors the SDK's parse_lane) -------------------
 function tokenize(cells) {
   const out = [];
   for (const tok of cells.trim().split(/\s+/).filter(Boolean)) {
     if (/[0-9]/.test(tok)) {
-      out.push({ kind: "note", text: tok });
+      out.push({ kind: "note", text: tok, midi: parseNoteMidi(tok) });
     } else {
       for (const ch of tok) {
         if (ch === "x") out.push({ kind: "hit", text: "▆" });
@@ -94,12 +127,21 @@ function selectTrack(t, li) {
   }
   durationSec = sec;
 
+  // Merge runs of the same pattern for a readable arrangement (intro intro -> intro).
+  sections = [];
+  for (const seg of timeline) {
+    const last = sections[sections.length - 1];
+    if (last && last.name === seg.name) last.durSec += seg.durSec;
+    else sections.push({ name: seg.name, startSec: seg.startSec, durSec: seg.durSec });
+  }
+
   $("np-title").textContent = t.title;
   $("np-tags").textContent = t.tags.join("  ·  ");
   $("clock").textContent = `0:00 / ${mmss(durationSec)}`;
 
   renderArrangement();
   renderLegend();
+  renderDissection();
   trackerPattern = null;
   renderFromFrac(0);
 
@@ -116,14 +158,17 @@ function selectTrack(t, li) {
 function renderArrangement() {
   const arr = $("arrangement");
   arr.innerHTML = "";
-  for (const seg of timeline) {
+  for (const seg of sections) {
     const div = document.createElement("div");
     div.className = "seg";
     div.style.flex = `${seg.durSec} 0 0`;
     div.style.setProperty("--c", patternColor(seg.name));
-    const label = document.createElement("span");
-    label.textContent = seg.name;
-    div.appendChild(label);
+    // Only label blocks wide enough to fit the text, so labels never collide.
+    if (seg.durSec / durationSec > 0.05) {
+      const label = document.createElement("span");
+      label.textContent = seg.name;
+      div.appendChild(label);
+    }
     arr.appendChild(div);
   }
   const ph = document.createElement("div");
@@ -139,6 +184,121 @@ function renderLegend() {
   const seen = new Map();
   for (const seg of timeline) if (!seen.has(seg.name)) seen.set(seg.name, patternColor(seg.name));
   $("legend").innerHTML = [...seen].map(([n, c]) => `<span style="--c:${c}">${n}</span>`).join("");
+}
+
+const DISSECT_GUTTER = 104;
+const DISSECT_HEAD = 22;
+const DISSECT_LANE_H = 30;
+
+// Full-track activity map: one row per instrument; melodic rows draw pitch as
+// height (no note-reading needed), rhythm rows draw hits as ticks.
+function renderDissection() {
+  if (!track) return;
+  const byName = Object.fromEntries(track.patterns.map((p) => [p.name, p]));
+
+  // Union of lane names, in a friendly order.
+  const present = new Set();
+  for (const p of track.patterns) for (const l of p.lanes) present.add(l.name);
+  const lanes = [...present].sort((a, b) => {
+    const ia = LANE_ORDER.indexOf(a), ib = LANE_ORDER.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+  });
+
+  // Per-lane: is it melodic, and what's its pitch range across the whole song?
+  const meta = {};
+  for (const lane of lanes) {
+    let lo = Infinity, hi = -Infinity, pitched = false;
+    for (const p of track.patterns) {
+      const lo2 = p.lanes.find((l) => l.name === lane);
+      if (!lo2) continue;
+      for (const c of tokenize(lo2.cells))
+        if (c.kind === "note" && c.midi != null) { pitched = true; lo = Math.min(lo, c.midi); hi = Math.max(hi, c.midi); }
+    }
+    meta[lane] = { pitched, lo, hi };
+  }
+
+  const cv = $("dissect");
+  const cssW = cv.parentElement.clientWidth || 800;
+  const h = DISSECT_HEAD + lanes.length * DISSECT_LANE_H;
+  const dpr = window.devicePixelRatio || 1;
+  cv.style.height = h + "px";
+  cv.width = cssW * dpr;
+  cv.height = h * dpr;
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, h);
+
+  const plotW = cssW - DISSECT_GUTTER;
+  const xOf = (sec) => DISSECT_GUTTER + (sec / durationSec) * plotW;
+
+  // Section bands (header) + faint tints down the lanes + boundaries (merged runs).
+  for (const seg of sections) {
+    const x = xOf(seg.startSec), w = (seg.durSec / durationSec) * plotW;
+    ctx.fillStyle = hexA(patternColor(seg.name), 0.09);
+    ctx.fillRect(x, DISSECT_HEAD, w, h - DISSECT_HEAD);
+    ctx.fillStyle = hexA(patternColor(seg.name), 0.55);
+    ctx.fillRect(x, 0, w, DISSECT_HEAD);
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    if (w > 34) {
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
+      ctx.font = "600 10px 'Chakra Petch', sans-serif";
+      ctx.fillText(seg.name, x + 5, 15);
+    }
+  }
+
+  ctx.textBaseline = "middle";
+  lanes.forEach((lane, li) => {
+    const top = DISSECT_HEAD + li * DISSECT_LANE_H;
+    const info = laneInfo(lane);
+    const m = meta[lane];
+
+    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+    ctx.beginPath(); ctx.moveTo(DISSECT_GUTTER, top); ctx.lineTo(cssW, top); ctx.stroke();
+    ctx.fillStyle = info.color;
+    ctx.font = "12px 'Share Tech Mono', monospace";
+    ctx.fillText(info.label, 10, top + DISSECT_LANE_H / 2);
+
+    for (const seg of timeline) {
+      const lo2 = byName[seg.name].lanes.find((l) => l.name === lane);
+      if (!lo2) continue;
+      const cells = tokenize(lo2.cells);
+      const segX = xOf(seg.startSec);
+      const colW = (seg.secPerRow / durationSec) * plotW;
+
+      if (m.pitched) {
+        // Held note bars at pitch height (extends over sustain/ghost cells).
+        for (let i = 0; i < cells.length; i++) {
+          if (cells[i].kind !== "note" || cells[i].midi == null) continue;
+          let j = i + 1;
+          while (j < cells.length && cells[j].kind !== "note" && cells[j].kind !== "off") j++;
+          const span = m.hi > m.lo ? (cells[i].midi - m.lo) / (m.hi - m.lo) : 0.5;
+          const y = top + DISSECT_LANE_H - 4 - span * (DISSECT_LANE_H - 8);
+          ctx.fillStyle = info.color;
+          ctx.fillRect(segX + i * colW, y, Math.max((j - i) * colW - 1, 1.5), 3);
+        }
+      } else {
+        // Rhythm ticks: accent tall/bright, hit medium, ghost faint.
+        for (let i = 0; i < cells.length; i++) {
+          const k = cells[i].kind;
+          if (k !== "hit" && k !== "accent" && k !== "ghost") continue;
+          const intensity = k === "accent" ? 1 : k === "hit" ? 0.66 : 0.3;
+          const th = (DISSECT_LANE_H - 8) * intensity;
+          ctx.fillStyle = hexA(info.color, 0.4 + 0.6 * intensity);
+          ctx.fillRect(segX + i * colW, top + DISSECT_LANE_H - 3 - th, Math.max(colW * 0.6, 1.5), th);
+        }
+      }
+    }
+  });
+
+  positionDissectPlayhead(lastFrac);
+}
+
+let lastFrac = 0;
+function positionDissectPlayhead(frac) {
+  const cv = $("dissect");
+  const w = cv.clientWidth || 0;
+  $("dissect-playhead").style.left = `${DISSECT_GUTTER + frac * (w - DISSECT_GUTTER)}px`;
 }
 
 function renderTracker(pattern, col) {
@@ -188,6 +348,8 @@ function renderFromFrac(frac) {
   }
   highlightCol(Math.floor((sec - seg.startSec) / seg.secPerRow));
   $("playhead").style.left = `${frac * 100}%`;
+  lastFrac = frac;
+  positionDissectPlayhead(frac);
 }
 
 // Prefer the real rendered length; fall back to the song-maths estimate.
@@ -280,6 +442,19 @@ document.addEventListener("keydown", (e) => {
     const t = audio.currentTime + (e.key === "ArrowRight" ? 5 : -5);
     seekToFrac(Math.max(0, Math.min(0.999, t / d)));
   }
+});
+
+// Click the dissection map to seek (its plot starts after the label gutter).
+$("dissect-wrap").onclick = (e) => {
+  if (!track) return;
+  const r = $("dissect").getBoundingClientRect();
+  const frac = (e.clientX - r.left - DISSECT_GUTTER) / (r.width - DISSECT_GUTTER);
+  seekToFrac(Math.max(0, Math.min(0.999, frac)));
+};
+
+// Redraw the canvas map when the window resizes.
+window.addEventListener("resize", () => {
+  if (track) renderDissection();
 });
 
 boot();

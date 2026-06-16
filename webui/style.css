@@ -210,7 +210,20 @@ h3 .sub { color: var(--muted); font-weight: 400; letter-spacing: 0.5px; text-tra
 #legend span { display: inline-flex; align-items: center; }
 #legend span::before { content: ""; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; background: var(--c); box-shadow: 0 0 6px var(--c); }
 
-/* --- tracker (breakdown) ------------------------------------------------- */
+/* --- dissection (full-track activity map) -------------------------------- */
+#dissect-wrap {
+  position: relative; overflow: hidden; cursor: pointer; margin-top: 2px;
+  border: 1px solid var(--line); border-radius: 5px; background: rgba(8, 6, 15, 0.5);
+}
+#dissect { display: block; width: 100%; }
+#dissect-playhead {
+  position: absolute; top: 0; bottom: 0; width: 2px; left: 0;
+  background: #fff; box-shadow: 0 0 10px #fff, 0 0 18px var(--cyan); pointer-events: none;
+}
+.caption { color: var(--muted); font-size: 11px; margin: 9px 0 0; font-family: var(--f-mono); }
+.caption .dot { color: var(--magenta); margin: 0 8px; }
+
+/* --- tracker (detail) ---------------------------------------------------- */
 #tracker {
   overflow-x: auto;
   border: 1px solid var(--line); border-radius: 5px;
@@ -239,6 +252,26 @@ h3 .sub { color: var(--muted); font-weight: 400; letter-spacing: 0.5px; text-tra
 .cell.accent { color: var(--hot); font-weight: bold; text-shadow: 0 0 7px var(--hot); }
 .cell.ghost { color: #5b5482; }
 .cell.off { color: #2c2742; }
+
+/* --- responsive ---------------------------------------------------------- */
+@media (max-width: 860px) {
+  body { overflow: auto; }
+  main { flex-direction: column; height: auto; }
+  #jukebox {
+    width: 100%; max-height: 30vh;
+    border-right: none; border-bottom: 1px solid var(--line);
+  }
+  #stage { padding: 18px 16px 48px; }
+  header { padding: 14px 18px 12px; }
+  header h1 { font-size: 24px; letter-spacing: 3px; }
+}
+@media (max-width: 560px) {
+  #transport { gap: 12px; }
+  #playpause { width: 44px; height: 44px; }
+  #np-title { font-size: 18px; }
+  h3 .sub { display: none; } /* drop secondary captions when very narrow */
+  .seg { font-size: 9px; }
+}
 
 /* honour the OS "reduce motion" setting — no animations or transitions */
 @media (prefers-reduced-motion: reduce) {
