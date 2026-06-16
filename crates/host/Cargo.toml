@@ -20,3 +20,4 @@ ctrlc = { workspace = true }
 wasmtime-wasi = "45"
 freeverb = "0.2.0"
 crossbeam-channel = "0.5.15"
+ratatui = "0.30"
