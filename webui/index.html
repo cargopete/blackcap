@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>blackcap — jukebox</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>blackcap<span class="sub">// WebAssembly jukebox</span></h1>
+  <div class="hint">structure parsed from <code>song!{}</code> · audio rendered by the real host</div>
+</header>
+
+<main>
+  <!-- Jukebox: the cartridge shelf -->
+  <aside id="jukebox">
+    <h2>Cartridges</h2>
+    <ul id="cartridge-list"></ul>
+  </aside>
+
+  <section id="stage">
+    <div id="transport">
+      <button id="playpause" disabled>▶</button>
+      <div class="np">
+        <div id="np-title">— select a cartridge —</div>
+        <div id="np-tags"></div>
+      </div>
+      <div id="clock">0:00 / 0:00</div>
+    </div>
+
+    <!-- Live analyser -->
+    <canvas id="scope" height="90"></canvas>
+
+    <!-- The "bones": arrangement of the sequence -->
+    <h3>Bones <span class="muted">— arrangement (click to seek)</span></h3>
+    <div id="arrangement"></div>
+    <div id="legend"></div>
+
+    <!-- The "breakdown": tracker grid of the current pattern -->
+    <h3>Breakdown <span class="muted" id="pattern-name">— pattern</span></h3>
+    <div id="tracker"></div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

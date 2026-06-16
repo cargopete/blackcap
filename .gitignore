@@ -4,3 +4,7 @@ Cargo.lock.bak
 *.wasm
 !wasi_snapshot_preview1.reactor.wasm
 .DS_Store
+
+# Web UI generated artifacts (regenerate with webui/build.sh)
+webui/tracks/
+webui/tracks.json
