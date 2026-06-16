@@ -25,7 +25,7 @@ python3 webui/extract.py
 
 cat <<'EOF'
 
-done. serve the UI:
-  (cd webui && python3 -m http.server 8080)
+done. serve the UI (Range-capable, so seeking works):
+  python3 webui/serve.py 8080
 then open http://localhost:8080
 EOF

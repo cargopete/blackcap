@@ -187,14 +187,17 @@ function renderFromRow(row) {
   $("playhead").style.left = `${(row / totalRows) * 100}%`;
 }
 
+// Prefer the real rendered length; fall back to the song-maths estimate.
+function audioDur() {
+  return audio.duration && isFinite(audio.duration) ? audio.duration : durationSec;
+}
+
 function seekToFrac(frac) {
-  const row = frac * totalRows;
   if (track.hasWav && audio.src) {
-    audio.currentTime = frac * durationSec;
-    renderFromRow(row);
-  } else {
-    renderFromRow(row);
+    audio.currentTime = frac * audioDur();
+    $("clock").textContent = `${mmss(frac * audioDur())} / ${mmss(audioDur())}`;
   }
+  renderFromRow(frac * totalRows);
 }
 
 // --- audio + live loop -----------------------------------------------------
@@ -222,10 +225,10 @@ audio.onended = () => ($("playpause").textContent = "▶");
 
 function frame() {
   if (track) {
-    if (!audio.paused && durationSec > 0) {
-      const row = (audio.currentTime / durationSec) * totalRows;
-      renderFromRow(row);
-      $("clock").textContent = `${mmss(audio.currentTime)} / ${mmss(durationSec)}`;
+    if (!audio.paused) {
+      const d = audioDur();
+      renderFromRow((audio.currentTime / d) * totalRows);
+      $("clock").textContent = `${mmss(audio.currentTime)} / ${mmss(d)}`;
     }
     drawScope();
   }
@@ -254,6 +257,15 @@ function drawScope() {
     ctx.fillRect(i * bw, h - bh, bw - 1, bh);
   }
 }
+
+// Spacebar toggles play/pause.
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space" || e.key === " ") {
+    e.preventDefault();
+    const btn = $("playpause");
+    if (!btn.disabled) btn.click();
+  }
+});
 
 boot();
 requestAnimationFrame(frame);

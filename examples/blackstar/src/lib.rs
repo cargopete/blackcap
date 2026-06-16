@@ -29,15 +29,6 @@ const SONG: TrackerSong = song! {
         crash:     "x--- ---- ---- ----  ---- ---- ---- ----";
     }
 
-    pattern "verse" {
-        chug_note: "a1 .  .  .   bb1 .  .  .   a1 .  .  .   g1 .  .  .    a1 .  .  .   bb1 .  .  .   a1 .  f1 .   e1 .  .  .";
-        gate:      "x-xx x-xx x-xx xxxx  x-xx x-xx x-xx xxxx";
-        kick:      "x-xx x-xx x-xx x-xx  x-xx x-xx x-xx xxxx";
-        snare:     "---- x--- ---- x---  ---- x--- ---- x-x-";
-        lead:      "a4 -  -  -   -  -  -  -   c5 -  -  -   -  -  -  -    bb4 - -  -   -  -  -  -   a4 -  g4 -   e4 -  -  -";
-        hat:       "x-x- x-x- x-x- x-x-  x-x- x-x- x-x- x-x-";
-    }
-
     pattern "drop" {
         // The wobble is the bass; LFO sweeps the filter. Re-hit each bar so its
         // long-decay envelope stays up across the drop.
@@ -66,15 +57,17 @@ const SONG: TrackerSong = song! {
         kick:        "x--- ---- ---- ----  ---- ---- ---- ----";
     }
 
+    // Instrumental — no verses. `intro` doubles as the riser/build that lifts
+    // into each drop; the track lives in the drop ↔ breakdown contrast.
     sequence: [
         intro, intro,
-        verse, verse, verse, verse,
         drop, drop, drop, drop,
         breakdown, breakdown, breakdown, breakdown,
-        verse, verse,
+        drop, drop,
+        intro,
         drop, drop, drop, drop,
         breakdown, breakdown, breakdown,
-        drop, drop,
+        drop, drop, drop,
         outro,
     ];
 };

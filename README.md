@@ -243,9 +243,13 @@ static page then shows:
   live spectrum while the rendered audio plays.
 
 ```sh
-./webui/build.sh                          # render WAVs + extract structure
-(cd webui && python3 -m http.server 8080) # then open http://localhost:8080
+./webui/build.sh            # render WAVs + extract structure
+python3 webui/serve.py 8080 # Range-capable server (seeking works); open http://localhost:8080
 ```
+
+Keys: **space** play/pause · click the Bones strip to seek. (The bundled
+`serve.py` supports HTTP Range — stock `python -m http.server` doesn't, which
+breaks audio seeking.)
 
 Cartridges are wasm *components* importing the whole host, so they don't run
 in-browser directly — instead the host renders them to audio (`blackcap --render
