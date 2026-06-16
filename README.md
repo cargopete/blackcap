@@ -10,8 +10,9 @@ and plays the result through [cpal] over a wait-free SPSC ring buffer.
 > workers feed their own rings, a mixer thread equal-power crossfades between
 > them and applies a master compressor + brickwall limiter before the output
 > ring. Drop a `.wasm` into `~/.jukebox/cartridges` and it fades in. A worked
-> ~70 s synth-metal track ships in `examples/synthcore-track` (M5); the ratatui
-> TUI (M6) is the last piece.
+> ~70 s synth-metal track ships in `examples/synthcore-track` (M5), and a
+> **ratatui front-end** (M6, `--tui`) gives you a cartridge list, now-playing,
+> a VU meter, and a timeline. M0–M6 complete.
 
 ## The shape of it
 
@@ -85,6 +86,13 @@ master compressor + brickwall limiter (`--no-master` to bypass) before the
 output ring. A buggy cartridge can be torn down mid-fade without the audio
 thread noticing.
 
+```sh
+# Interactive front-end: cartridge list, now-playing, VU, timeline.
+blackcap --tui          # ↑/↓ select · ⏎ play/crossfade · r rescan · q quit
+```
+
+The TUI watches `~/.jukebox/cartridges`; ⏎ on a list entry crossfades to it.
+
 ## Writing a cartridge
 
 Implement [`Player`] and hand it to `export_player!`; the SDK owns the
@@ -132,6 +140,7 @@ crates/host/                 the jukebox host (cpal + wasmtime + rtrb)
   src/host.rs                host DSP resources (svf, freeverb, delay, waveshaper)
   src/{worker,mixer}.rs      render workers + crossfade mixer thread
   src/master.rs              master bus: compressor + brickwall limiter
+  src/{controller,tui}.rs    orchestration + ratatui front-end
 crates/sdk/                  jukebox-cartridge-sdk
   src/fx.rs                  inline DSP helpers
   src/{osc,env,perc,song}.rs oscillators, envelopes, percussion, song! DSL

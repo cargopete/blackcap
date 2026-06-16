@@ -10,8 +10,9 @@ default:
 build-host:
     cargo build -p blackcap --release
 
-# Run the SDK unit tests (native target).
+# Run the unit tests (host + SDK).
 test:
+    cargo test -p blackcap
     cd crates/sdk && cargo test
 
 # Build a cartridge in examples/ to a wasm component. e.g. `just build arpeggio-cartridge`
@@ -45,6 +46,10 @@ crossfade A B: (build A) (build B)
 # Watch ~/.jukebox/cartridges and crossfade to new drops.
 watch:
     {{host_run}} --watch
+
+# Interactive ratatui front-end (cartridge list, VU, timeline).
+tui:
+    {{host_run}} --tui
 
 # Drop a built cartridge into the jukebox library dir.
 install CART: (build CART)
