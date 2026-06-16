@@ -9,8 +9,9 @@ and plays the result through [cpal] over a wait-free SPSC ring buffer.
 > imports (M3, WIT `@0.2.0`), and now **hot-reloads with crossfade**: render
 > workers feed their own rings, a mixer thread equal-power crossfades between
 > them and applies a master compressor + brickwall limiter before the output
-> ring. Drop a `.wasm` into `~/.jukebox/cartridges` and it fades in. The TUI
-> (M5–M6) and a real synth-metal track are still ahead.
+> ring. Drop a `.wasm` into `~/.jukebox/cartridges` and it fades in. A worked
+> ~70 s synth-metal track ships in `examples/synthcore-track` (M5); the ratatui
+> TUI (M6) is the last piece.
 
 ## The shape of it
 
@@ -138,7 +139,12 @@ examples/sine-cartridge/     M1 hand-rolled cartridge (no SDK)
 examples/arpeggio-cartridge/ M2 three-channel arpeggio (SDK + song!)
 examples/breakdown-cartridge/ M2 drop-A metalcore breakdown (inline DSP)
 examples/host-dsp-cartridge/ M3 chug crunched + reverbed by host DSP imports
+examples/synthcore-track/    M5 "Eutectic Point" — a ~70s synth-metal track
 ```
+
+Hear the worked track: `just play synthcore-track` (drop-A, A phrygian; intro →
+verse riff → breakdown → lead chorus → outro, ~70 s). Pure synthesis, so it
+lands at Master Boot Record / synthcore rather than djent — that's the medium.
 
 ## Licence
 
