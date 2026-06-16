@@ -1,4 +1,4 @@
-package jukebox:cartridge@0.1.0;
+package jukebox:cartridge@0.2.0;
 
 interface types {
   /// Interleaved L/R samples. Length is always 2 * num-frames.
@@ -32,7 +32,72 @@ interface types {
   }
 }
 
-/// The export interface every cartridge must implement.
+/// Host-provided DSP. Optional: a self-contained cartridge may implement all
+/// DSP inline and import nothing. Host imports earn their keep for *stateful*
+/// effects — filter/reverb/delay/shaper state lives host-side (native, SIMD-able,
+/// upgradeable), the cartridge holds an opaque handle.
+interface dsp {
+  use types.{audio-block};
+
+  /// Stateless block generators. The caller owns phase/seed; the host returns
+  /// the advanced value as the second tuple element, so one host node can drive
+  /// many cartridge "voices" without the host tracking instance identity.
+  osc-sine: func(freq-hz: f32, phase: f32, num-frames: u32, sample-rate: u32) -> tuple<audio-block, f32>;
+  osc-saw: func(freq-hz: f32, phase: f32, num-frames: u32, sample-rate: u32) -> tuple<audio-block, f32>; // PolyBLEP
+  osc-square: func(freq-hz: f32, phase: f32, pw: f32, num-frames: u32, sample-rate: u32) -> tuple<audio-block, f32>; // PolyBLEP
+  osc-triangle: func(freq-hz: f32, phase: f32, num-frames: u32, sample-rate: u32) -> tuple<audio-block, f32>;
+  osc-noise: func(seed: u64, num-frames: u32) -> tuple<audio-block, u64>;
+
+  /// State-variable filter: lowpass/highpass/bandpass from one structure.
+  resource biquad-svf {
+    constructor(sample-rate: u32);
+    set-params: func(cutoff-hz: f32, q: f32);
+    /// Returns (lp, hp, bp).
+    process: func(input: audio-block) -> tuple<audio-block, audio-block, audio-block>;
+    reset: func();
+  }
+
+  /// Freeverb-style stereo reverb.
+  resource reverb {
+    constructor(sample-rate: u32);
+    set-params: func(room-size: f32, damping: f32, wet: f32);
+    process: func(input-l: audio-block, input-r: audio-block) -> tuple<audio-block, audio-block>;
+  }
+
+  /// Feedback delay line.
+  resource delay {
+    constructor(sample-rate: u32, max-seconds: f32);
+    set-params: func(time-seconds: f32, feedback: f32, mix: f32);
+    process: func(input: audio-block) -> audio-block;
+  }
+
+  enum shape-kind {
+    soft-tanh,
+    asym-tanh,
+    hard-clip,
+    cubic,
+    wavefold,
+  }
+
+  /// Oversampled, anti-aliased waveshaper with built-in tightening EQ. This is
+  /// the metalcore chug crunch: oversample around the nonlinearity so the
+  /// harmonics it manufactures don't fold back as digital fizz.
+  resource waveshaper {
+    /// `oversample` must be 1, 2, or 4. 1 = no oversampling (aliases — for
+    /// deliberately lo-fi tones only).
+    constructor(sample-rate: u32, oversample: u8);
+    set-shape: func(shape: shape-kind, drive: f32, bias: f32);
+    /// Tightening EQ around the nonlinearity. 0 disables either filter.
+    set-tone: func(pre-hp-hz: f32, post-lp-hz: f32);
+    process: func(input: audio-block) -> audio-block;
+    reset: func();
+  }
+}
+
+interface log {
+  log: func(msg: string);
+}
+
 interface player {
   use types.{audio-block, metadata};
 
@@ -57,10 +122,11 @@ interface player {
   get-metadata: func() -> metadata;
 }
 
-/// v1 world: cartridge is a reactor (no main) that only exports `player`.
-///
-/// The optional `dsp` and `log` imports land additively in @0.2.0 (M3) — a
-/// v1 cartridge that imports nothing keeps working against a v2 host.
+/// v0.2 world: a reactor that exports `player` and may import host `dsp` and
+/// `log`. Imports are optional — a cartridge that calls neither still loads
+/// (unused imports are tree-shaken out of the component).
 world cartridge {
+  import dsp;
+  import log;
   export player;
 }
