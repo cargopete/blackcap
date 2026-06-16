@@ -7,7 +7,7 @@
 //! are host imports that arrive at M3; for now the distortion is an inline
 //! `tanh` with tightening filters, which is honest M2 territory.
 
-use jukebox_cartridge_sdk::dsp::{OnePoleHp, OnePoleLp};
+use jukebox_cartridge_sdk::fx::{OnePoleHp, OnePoleLp};
 use jukebox_cartridge_sdk::prelude::*;
 
 const SR: u32 = 48_000;

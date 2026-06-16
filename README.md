@@ -4,12 +4,12 @@ A WebAssembly jukebox. Cartridges are `.wasm` **component** files that export a
 tiny audio interface; the host loads them, calls `render()` on a worker thread,
 and plays the result through [cpal] over a wait-free SPSC ring buffer.
 
-> Status: **M2**. The host plays the built-in sine (M0) and loads real wasm
-> cartridges (M1). The cartridge SDK (M2) is up: oscillators, envelopes,
-> percussion, a de-clicking gate, and a `song!{}` tracker DSL — enough to write
-> a three-channel arpeggio or a drop-A breakdown. Host DSP imports
-> (oversampled waveshaper, reverb, master limiter), hot-reload/crossfade, and
-> the TUI are still ahead (M3–M6).
+> Status: **M3**. Host plays the built-in sine (M0), loads wasm cartridges (M1),
+> ships a cartridge SDK with a `song!{}` tracker DSL (M2), and now exposes
+> **host DSP imports** (M3, WIT `@0.2.0`): oscillators, an SVF, a freeverb
+> reverb, a feedback delay, and an oversampled anti-aliased waveshaper — plus a
+> `log` import. Cartridges that offload DSP to the host are smaller. The master
+> compressor/limiter, hot-reload/crossfade, and the TUI are still ahead (M4–M6).
 
 ## The shape of it
 
@@ -86,18 +86,38 @@ const SONG: TrackerSong = song! {
 };
 ```
 
-See `examples/arpeggio-cartridge` (clean) and `examples/breakdown-cartridge`
-(percussion + de-click gate + sidechain). [`Player`]: crates/sdk/src/lib.rs
+DSP comes two ways. **Inline** helpers live in `sdk::fx` (oscillators,
+envelopes, percussion, filters) — self-contained, no imports. **Host imports**
+live in `sdk::dsp`: effect *state* lives in the host (native, upgradeable), the
+cartridge holds an opaque handle.
+
+```rust
+use jukebox_cartridge_sdk::dsp::{Waveshaper, ShapeKind};
+
+let shaper = Waveshaper::new(48_000, 4);          // ×4 oversampled
+shaper.set_shape(ShapeKind::AsymTanh, 4.5, 0.15);
+shaper.set_tone(100.0, 8000.0);
+let crunch = shaper.process(&chug);               // anti-aliased, no fizz
+```
+
+See `examples/arpeggio-cartridge` (clean), `examples/breakdown-cartridge`
+(percussion + de-click gate + sidechain, all inline), and
+`examples/host-dsp-cartridge` (the same chug crunched + reverbed by host DSP —
+~30% smaller wasm). [`Player`]: crates/sdk/src/lib.rs
 
 ## Layout
 
 ```
-wit/jukebox.wit              cartridge contract (types + player + world)
+wit/jukebox.wit              cartridge contract @0.2.0 (types + dsp + log + player)
 crates/host/                 the jukebox host (cpal + wasmtime + rtrb)
-crates/sdk/                  jukebox-cartridge-sdk: osc, env, perc, song! DSL
+  src/host.rs                host DSP resources (svf, freeverb, delay, waveshaper)
+crates/sdk/                  jukebox-cartridge-sdk
+  src/fx.rs                  inline DSP helpers
+  src/{osc,env,perc,song}.rs oscillators, envelopes, percussion, song! DSL
 examples/sine-cartridge/     M1 hand-rolled cartridge (no SDK)
 examples/arpeggio-cartridge/ M2 three-channel arpeggio (SDK + song!)
 examples/breakdown-cartridge/ M2 drop-A metalcore breakdown (inline DSP)
+examples/host-dsp-cartridge/ M3 chug crunched + reverbed by host DSP imports
 ```
 
 ## Licence

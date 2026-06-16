@@ -2,7 +2,7 @@
 //! square bass, noise hat) driven by the `song!{}` tracker DSL, all through the
 //! cartridge SDK. No host DSP imports yet (that's M3); everything is inline.
 
-use jukebox_cartridge_sdk::dsp::Svf;
+use jukebox_cartridge_sdk::fx::Svf;
 use jukebox_cartridge_sdk::osc::white;
 use jukebox_cartridge_sdk::prelude::*;
 
