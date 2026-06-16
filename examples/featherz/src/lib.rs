@@ -40,20 +40,31 @@ const SONG: TrackerSong = song! {
         crash:     "x--- ---- ---- ----  x--- ---- ---- ----";
     }
 
-    // Slow crushing breakdown (the part loved). Big spaced stomps, choir under,
-    // NO fast bursts. 120 bpm.
+    // Slow crushing breakdown — one tight stomping bar (the weak slow first half
+    // is gone). Accented hits with no dead air: slow and HEAVY, not slow + quiet.
+    // 120 bpm.
     pattern "breakdown" @120 {
-        pad:       "a3 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    .  .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
-        chug_note: "a1 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    .  .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
-        gate:      "X--- ---- --x- ----  X--- ---- X--- ----";
-        kick:      "x--- ---- --x- ----  x--- ---- x--- ----";
-        snare:     "---- ---- x--- ----  ---- ---- x--- ----";
-        crash:     "x--- ---- ---- ----  ---- ---- ---- ----";
+        pad:       "a3 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
+        lead:      "a4 .  .  .   .  .  .  .   eb5 - -  -   -  -  -  -"; // ghost over the stomp
+        chug_note: "a1 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
+        gate:      "X--- --X- X--- X-x-";
+        kick:      "x--- --x- x--- x-x-";
+        snare:     "---- ---- X--- ----";
+        crash:     "x--- ---- ---- ----";
+    }
+
+    // Pure haunting breather: choir + ghost pluck, no drums or chug. The intro's
+    // vibe, dropped in mid-song.
+    pattern "interlude" {
+        pad:  "a3 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    f3 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
+        lead: "a4 -  -  -   bb4 - -  -   c5 -  -  -   eb5 - -  -    d5 -  -  -   c5 -  -  -   bb4 - -  -   a4 -  -  -";
+        crash:"x--- ---- ---- ----  ---- ---- ---- ----";
     }
 
     // The great slow ending: even slower, enormous gaps, final dread. 84 bpm.
     pattern "ending" @84 {
         pad:       "a3 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    .  .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
+        lead:      "a4 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    eb4 - -  -   -  -  -  -   c4 -  -  -   bb3 - -  -";
         chug_note: "a1 .  .  .   .  .  .  .   .  .  .  .   .  .  .  .    .  .  .  .   .  .  .  .   .  .  .  .   .  .  .  .";
         gate:      "X--- ---- ---- ----  --x- ---- X--- ----";
         kick:      "x--- ---- ---- ----  --x- ---- x--- ----";
@@ -71,9 +82,10 @@ const SONG: TrackerSong = song! {
     sequence: [
         intro, intro,
         heavy, heavy, heavy,
-        breakdown, breakdown,
+        breakdown, breakdown, breakdown, breakdown,
         heavy, heavy,
-        breakdown, breakdown,
+        breakdown, breakdown, breakdown, breakdown,
+        interlude,
         ending, ending,
         outro,
     ];
@@ -222,13 +234,13 @@ impl Player for Featherz {
         let crash = self.crash.render_block(num_frames);
 
         // Reverb send: the pad (mostly) and the pluck — the haunting space.
-        let send: Vec<f32> = (0..n).map(|i| 0.5 * pad_sig[i] + 0.24 * pluck_crunch[i]).collect();
+        let send: Vec<f32> = (0..n).map(|i| 0.55 * pad_sig[i] + 0.26 * pluck_crunch[i]).collect();
         let (wet_l, wet_r) = self.reverb.process(&send, &send);
 
         let mut out = Vec::with_capacity(n * 2);
         for i in 0..n {
             let duck = 1.0 - 0.5 * kick[i].abs().min(1.0);
-            let dry = 0.16 * pad_sig[i]
+            let dry = 0.19 * pad_sig[i]
                 + 0.26 * pluck_crunch[i]
                 + 0.50 * chug_crunch[i] * duck
                 + 0.28 * sub_raw[i] * chug_g[i] * duck
