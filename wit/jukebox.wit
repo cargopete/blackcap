@@ -1,4 +1,4 @@
-package jukebox:cartridge@0.2.0;
+package jukebox:cartridge@0.3.0;
 
 interface types {
   /// Interleaved L/R samples. Length is always 2 * num-frames.
@@ -94,6 +94,40 @@ interface dsp {
   }
 }
 
+/// Sample playback (v2). The host owns sample PCM and the playback voices
+/// (native interpolation/resampling); the cartridge triggers notes. Samples
+/// come from the host library (~/.jukebox/samples/<name>.wav — your real DI
+/// guitars/drums) or from PCM the cartridge hands over. This is the only path
+/// to literal recorded timbre; pure synthesis caps out at synthcore.
+interface sampler {
+  use types.{audio-block};
+
+  /// A loaded sample owned by the host (mono, at the device sample rate).
+  resource sample {
+    /// Load `~/.jukebox/samples/<name>.wav`, downmixed to mono and resampled to
+    /// the device rate. None if missing or unreadable.
+    from-library: static func(name: string) -> option<sample>;
+    /// Register cartridge-provided mono PCM (already at the device rate).
+    from-pcm: static func(pcm: list<f32>) -> sample;
+    frame-count: func() -> u64;
+  }
+
+  /// A sample-playback voice: plays one sample at a time, pitch-shifted by
+  /// resampling. Hold several for polyphony.
+  resource sample-voice {
+    constructor();
+    /// (Re)trigger `sample` at `speed` (1.0 = as recorded, 2.0 = octave up via
+    /// faster playback) and linear `gain`, from the start.
+    trigger: func(sample: borrow<sample>, speed: f32, gain: f32);
+    /// Loop between two frames of the sample (in the sample's own frames).
+    set-loop: func(enabled: bool, start-frame: u64, end-frame: u64);
+    /// Render the next mono block; silence once finished (unless looping).
+    render: func(num-frames: u32) -> audio-block;
+    is-active: func() -> bool;
+    stop: func();
+  }
+}
+
 interface log {
   log: func(msg: string);
 }
@@ -127,6 +161,7 @@ interface player {
 /// (unused imports are tree-shaken out of the component).
 world cartridge {
   import dsp;
+  import sampler;
   import log;
   export player;
 }
