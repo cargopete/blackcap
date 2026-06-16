@@ -1,0 +1,21 @@
+[package]
+name = "arpeggio-cartridge"
+description = "M2 demo: a three-channel arpeggio built with the cartridge SDK + song! DSL."
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cargopete/blackcap"
+
+# Builds for wasm32-wasip2; detached from the host workspace.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+jukebox-cartridge-sdk = { path = "../../crates/sdk" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
