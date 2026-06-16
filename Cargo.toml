@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["crates/host"]
-# Cartridges build for wasm32-wasip2 and carry their own toolchain concerns,
-# so they live outside the host workspace (each has its own [workspace] table).
-exclude = ["examples/*"]
+# Cartridges and the cartridge SDK build for wasm32-wasip2 and carry their own
+# toolchain concerns, so they live outside the host workspace.
+exclude = ["examples/*", "crates/sdk"]
 
 [workspace.package]
 version = "0.1.0"
