@@ -226,6 +226,32 @@ Pure synthesis lands these at Master Boot Record / synthcore, not djent — that
 the medium, not a bug. Drop real DI `.wav` guitars into `~/.jukebox/samples` and
 point a cartridge at the sampler for literal guitar timbre.
 
+## Web UI
+
+A browser front-end for *seeing* a track's structure while it plays — a
+composition aid. `webui/build.sh` renders every cartridge to a WAV (through the
+real host + master chain) and extracts its `song!{}` structure to JSON; the
+static page then shows:
+
+- **Jukebox** — the cartridge shelf; click to load.
+- **Bones** — the arrangement: the `sequence` as colour-coded sections
+  (intro/verse/chorus/drop/breakdown/…), so the song's skeleton is one glance.
+  Click to seek.
+- **Breakdown** — the tracker grid of the current pattern: every lane × cell,
+  notes and hits, with the active column tracking the playhead.
+- **Live view** — a playhead sweeps the arrangement and an analyser drives a
+  live spectrum while the rendered audio plays.
+
+```sh
+./webui/build.sh                          # render WAVs + extract structure
+(cd webui && python3 -m http.server 8080) # then open http://localhost:8080
+```
+
+Cartridges are wasm *components* importing the whole host, so they don't run
+in-browser directly — instead the host renders them to audio (`blackcap --render
+out.wav`) and the page plays that, so what you hear matches the jukebox exactly.
+Generated WAVs and `tracks.json` are gitignored; re-run `build.sh` to refresh.
+
 ## Licence
 
 MIT OR Apache-2.0.
