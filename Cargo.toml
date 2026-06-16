@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = ["crates/host"]
+# Cartridges build for wasm32-wasip2 and carry their own toolchain concerns,
+# so they live outside the host workspace (each has its own [workspace] table).
+exclude = ["examples/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cargopete/blackcap"
+authors = ["cargopete"]
+
+[workspace.dependencies]
+wasmtime = "45"
+cpal = "0.18"
+rtrb = "0.3"
+anyhow = "1"
+ctrlc = "3"
+
+# A jukebox that glitches is no jukebox at all. Optimise the host even in dev
+# so the render worker keeps the ring fed.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

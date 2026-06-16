@@ -1,0 +1,6 @@
+/target
+**/target
+Cargo.lock.bak
+*.wasm
+!wasi_snapshot_preview1.reactor.wasm
+.DS_Store

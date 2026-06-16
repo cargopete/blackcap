@@ -1,0 +1,66 @@
+package jukebox:cartridge@0.1.0;
+
+interface types {
+  /// Interleaved L/R samples. Length is always 2 * num-frames.
+  ///
+  /// Interleaved stereo (not mono, not planar) because host audio APIs
+  /// (cpal default-output, CoreAudio, WASAPI shared) expect interleaved
+  /// frames, so we avoid a deinterleave on the hot path; mono would force
+  /// every cartridge to widen its own stereo; planar (two lists) doubles the
+  /// boundary-call count and canonical-ABI metadata for no gain.
+  type audio-block = list<f32>;
+
+  record loop-point {
+    start-frame: u64,
+    end-frame: u64, // exclusive
+  }
+
+  record metadata {
+    title: string,
+    artist: string,
+    /// Total length the cartridge intends to play. 0 = infinite/generative.
+    duration-frames: u64,
+    /// Sample rate the cartridge was authored at. The host refuses to load if
+    /// this disagrees with the device sample rate (v1: no resampling).
+    sample-rate: u32,
+    /// Optional loop region. If present, the host loops here.
+    loop-point: option<loop-point>,
+    /// Cartridge-controlled cover art. PNG bytes, recommended <= 16 KiB.
+    cover-art: option<list<u8>>,
+    /// Freeform tags for playlists. Keep small.
+    tags: list<string>,
+  }
+}
+
+/// The export interface every cartridge must implement.
+interface player {
+  use types.{audio-block, metadata};
+
+  /// Called once after instantiation. Receives the actual device sample rate.
+  /// Returning an error string terminates loading.
+  init: func(sample-rate: u32) -> result<_, string>;
+
+  /// Render `num-frames` of audio starting at absolute frame `start-frame`.
+  /// Output length MUST be 2 * num-frames (interleaved L/R).
+  /// MUST be sync. MUST NOT block. Called at audio rate from a worker thread.
+  render: func(start-frame: u64, num-frames: u32) -> audio-block;
+
+  /// Snap internal state to a given frame. Used by host UI seeks.
+  seek: func(frame: u64);
+
+  /// Reset all internal state. Called on cartridge reload / loop.
+  reset: func();
+
+  /// Tells the host "I'm done; you can stop calling render()."
+  is-finished: func() -> bool;
+
+  get-metadata: func() -> metadata;
+}
+
+/// v1 world: cartridge is a reactor (no main) that only exports `player`.
+///
+/// The optional `dsp` and `log` imports land additively in @0.2.0 (M3) — a
+/// v1 cartridge that imports nothing keeps working against a v2 host.
+world cartridge {
+  export player;
+}
