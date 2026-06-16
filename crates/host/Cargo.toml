@@ -18,3 +18,4 @@ rtrb = { workspace = true }
 anyhow = { workspace = true }
 ctrlc = { workspace = true }
 wasmtime-wasi = "45"
+freeverb = "0.2.0"

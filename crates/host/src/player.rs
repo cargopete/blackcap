@@ -7,39 +7,16 @@
 use std::path::Path;
 
 use anyhow::{anyhow, bail, Result};
-use wasmtime::component::{Component, Linker};
+use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Engine, Store};
-use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 use crate::engine::EPOCH_BUDGET;
-
-mod bindings {
-    wasmtime::component::bindgen!({
-        path: "../../wit",
-        world: "cartridge",
-    });
-}
-
-/// Host store data. v1 cartridges import no *jukebox* interfaces, but a `std`
-/// cartridge still imports `wasi:cli`/`wasi:io` (stdio, environment, …), so the
-/// host hands it a WASI context. The `dsp`/`log` imports (M3) bolt on here.
-pub struct HostState {
-    ctx: WasiCtx,
-    table: ResourceTable,
-}
-
-impl WasiView for HostState {
-    fn ctx(&mut self) -> WasiCtxView<'_> {
-        WasiCtxView {
-            ctx: &mut self.ctx,
-            table: &mut self.table,
-        }
-    }
-}
+use crate::host::HostState;
+use crate::wit;
 
 pub struct Cartridge {
     store: Store<HostState>,
-    world: bindings::Cartridge,
+    world: wit::Cartridge,
     pub sample_rate: u32,
     pub title: String,
     pub artist: String,
@@ -53,19 +30,16 @@ impl Cartridge {
         let component = Component::from_file(engine, path)
             .map_err(|e| anyhow!("failed to load component {}: {e}", path.display()))?;
 
-        // The jukebox world declares no imports, but std cartridges pull in
-        // WASI; satisfy those so instantiation succeeds.
         let mut linker = Linker::<HostState>::new(engine);
+        // std cartridges import WASI (stdio, env, …); the jukebox world imports
+        // host dsp + log. Provide all of them.
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
+        wit::Cartridge::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
 
-        let state = HostState {
-            ctx: WasiCtxBuilder::new().inherit_stdio().build(),
-            table: ResourceTable::new(),
-        };
-        let mut store = Store::new(engine, state);
+        let mut store = Store::new(engine, HostState::new());
         store.set_epoch_deadline(EPOCH_BUDGET);
 
-        let world = bindings::Cartridge::instantiate(&mut store, &component, &linker)?;
+        let world = wit::Cartridge::instantiate(&mut store, &component, &linker)?;
         let player = world.jukebox_cartridge_player();
 
         player

@@ -6,8 +6,10 @@
 
 mod audio;
 mod engine;
+mod host;
 mod player;
 mod source;
+mod wit;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

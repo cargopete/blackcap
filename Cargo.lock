@@ -102,6 +102,7 @@ dependencies = [
  "anyhow",
  "cpal",
  "ctrlc",
+ "freeverb",
  "rtrb",
  "wasmtime",
  "wasmtime-wasi",
@@ -692,6 +693,12 @@ checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
 ]
+
+[[package]]
+name = "freeverb"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc1a77d60920b1ecd5c168ad25c58a67c6bc432caa9b3292e8ee9b1aaeb7ba30"
 
 [[package]]
 name = "fs-set-times"
