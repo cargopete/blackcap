@@ -4,17 +4,23 @@ A WebAssembly jukebox. Cartridges are `.wasm` **component** files that export a
 tiny audio interface; the host loads them, calls `render()` on a worker thread,
 and plays the result through [cpal] over a wait-free SPSC ring buffer.
 
-> Status: **M4**. Host plays the built-in sine (M0), loads wasm cartridges (M1),
-> ships a cartridge SDK with a `song!{}` tracker DSL (M2), exposes host DSP
-> imports (M3, WIT `@0.2.0`), and now **hot-reloads with crossfade**: render
-> workers feed their own rings, a mixer thread equal-power crossfades between
-> them and applies a master compressor + brickwall limiter before the output
-> ring. Drop a `.wasm` into `~/.jukebox/cartridges` and it fades in. A worked
-> ~70 s synth-metal track ships in `examples/synthcore-track` (M5), and a
-> **ratatui front-end** (M6, `--tui`) gives you a cartridge list, now-playing,
-> a VU meter, and a timeline. M0–M6 complete. **v2** adds host **sample
-> playback** (WIT `@0.3.0`): drop `.wav` files into `~/.jukebox/samples` and
-> cartridges pitch-shift them — the path to real recorded (guitar/drum) timbre.
+> Status: **feature-complete** (WIT `@0.3.0`). What's here:
+>
+> - **Host** — cpal output over a wait-free ring; cartridges run on render
+>   worker threads; epoch-interrupt protection against runaway cartridges.
+> - **SDK + `song!{}` tracker DSL** — oscillators, envelopes, synthesised
+>   percussion, a de-clicking gate; write a cartridge in a few lines.
+> - **Host DSP imports** — SVF, freeverb, delay, an oversampled anti-aliased
+>   waveshaper; effect state lives host-side, cartridges hold handles.
+> - **Hot-reload + crossfade** — a mixer thread equal-power crossfades between
+>   workers and runs a master compressor + brickwall limiter. Drop a `.wasm`
+>   into `~/.jukebox/cartridges` and it fades in.
+> - **Sample playback** — drop `.wav` files into `~/.jukebox/samples`;
+>   cartridges pitch-shift them, with multisampling for believable instruments.
+>   The path to real recorded (guitar/drum) timbre.
+> - **`--tui`** — a ratatui front-end: cartridge list, now-playing, VU, timeline.
+>
+> Worked tracks ship in `examples/` — see [Tracks](#tracks).
 
 ## The shape of it
 
@@ -53,7 +59,8 @@ just play arpeggio-cartridge    # build + play the three-channel arpeggio
 just play breakdown-cartridge   # build + play the drop-A breakdown
 just dry-run breakdown-cartridge  # headless: render blocks, print peak/RMS
 just inspect arpeggio-cartridge   # show the WIT the cartridge exports
-just test                       # SDK unit tests
+just play severance               # the worked synth-metalcore track
+just test                       # unit tests (host + SDK)
 ```
 
 Or by hand:
@@ -137,23 +144,24 @@ See `examples/arpeggio-cartridge` (clean), `examples/breakdown-cartridge`
 ## Layout
 
 ```
-wit/jukebox.wit              cartridge contract @0.2.0 (types + dsp + log + player)
-crates/host/                 the jukebox host (cpal + wasmtime + rtrb)
-  src/host.rs                host DSP resources (svf, freeverb, delay, waveshaper)
-  src/{worker,mixer}.rs      render workers + crossfade mixer thread
-  src/master.rs              master bus: compressor + brickwall limiter
-  src/{controller,tui}.rs    orchestration + ratatui front-end
-crates/sdk/                  jukebox-cartridge-sdk
-  src/fx.rs                  inline DSP helpers
-  src/{osc,env,perc,song}.rs oscillators, envelopes, percussion, song! DSL
-examples/sine-cartridge/     M1 hand-rolled cartridge (no SDK)
-examples/arpeggio-cartridge/ M2 three-channel arpeggio (SDK + song!)
-examples/breakdown-cartridge/ M2 drop-A metalcore breakdown (inline DSP)
-examples/host-dsp-cartridge/ M3 chug crunched + reverbed by host DSP imports
-examples/synthcore-track/    M5 "Eutectic Point" — a ~70s synth-metal track
-examples/sampled-guitar/     v2 Karplus-Strong pluck via the host sampler
-examples/multisampled-guitar/ v2.1 multisampled instrument (nearest-zone)
-  src/sampler.rs (host)      WAV library + interpolating voices + multisample
+wit/jukebox.wit               cartridge contract @0.3.0 (types/dsp/sampler/log/player)
+crates/host/                  the jukebox host (cpal + wasmtime + rtrb)
+  src/host.rs                 host DSP resources (svf, freeverb, delay, waveshaper)
+  src/sampler.rs              WAV library + interpolating voices + multisample
+  src/{worker,mixer}.rs       render workers + crossfade mixer thread
+  src/master.rs               master bus: compressor + brickwall limiter
+  src/{controller,tui}.rs     orchestration + ratatui front-end
+crates/sdk/                   jukebox-cartridge-sdk
+  src/fx.rs                   inline DSP helpers
+  src/{osc,env,perc,song}.rs  oscillators, envelopes, percussion, song! DSL
+examples/sine-cartridge/      hand-rolled cartridge, no SDK (the raw contract)
+examples/arpeggio-cartridge/  three-channel arpeggio (SDK + song!)
+examples/breakdown-cartridge/ drop-A breakdown, all inline DSP
+examples/host-dsp-cartridge/  the same chug via host DSP imports (~30% smaller)
+examples/synthcore-track/     "Eutectic Point" — ~70s synth-metal track
+examples/severance/           "Severance" — ~83s synth-metalcore track
+examples/sampled-guitar/      Karplus-Strong pluck via the host sampler
+examples/multisampled-guitar/ multisampled instrument (nearest-zone)
 ```
 
 ## Sample playback (v2)
@@ -193,9 +201,24 @@ voice.trigger_pitched(&inst, note_hz, 0.8);                    // nearest zone
 See `examples/multisampled-guitar` (3 synthesised zones; drop
 `guitar_a1/a2/a3.wav` into the samples dir for real ones).
 
-Hear the worked track: `just play synthcore-track` (drop-A, A phrygian; intro →
-verse riff → breakdown → lead chorus → outro, ~70 s). Pure synthesis, so it
-lands at Master Boot Record / synthcore rather than djent — that's the medium.
+## Tracks
+
+Worked songs, written entirely in the `song!{}` DSL:
+
+```sh
+just play severance        # synth-metalcore, D minor / drop-D, ~83 s
+just play synthcore-track  # "Eutectic Point" — synth-metal, A phrygian, ~70 s
+```
+
+- **Severance** — Erra / early-Asking-Alexandria flavour: ambient supersaw
+  intro → palm-mute gallop verse → soaring chorus over Dm–Bb–F–C → half-time
+  breakdown → the euphoric trance-synth drop → reprise → outro.
+- **Eutectic Point** — drop-A synth-metal: intro → verse riff → breakdown →
+  lead chorus → outro.
+
+Pure synthesis lands these at Master Boot Record / synthcore, not djent — that's
+the medium, not a bug. Drop real DI `.wav` guitars into `~/.jukebox/samples` and
+point a cartridge at the sampler for literal guitar timbre.
 
 ## Licence
 
