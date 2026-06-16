@@ -38,6 +38,14 @@ inspect CART: (build CART)
 sine:
     {{host_run}} --sine
 
+# Crossfade demo: play A, fade to B. e.g. `just crossfade arpeggio-cartridge breakdown-cartridge`
+crossfade A B: (build A) (build B)
+    {{host_run}} `just _wasm {{A}}` `just _wasm {{B}}`
+
+# Watch ~/.jukebox/cartridges and crossfade to new drops.
+watch:
+    {{host_run}} --watch
+
 # Drop a built cartridge into the jukebox library dir.
 install CART: (build CART)
     mkdir -p ~/.jukebox/cartridges

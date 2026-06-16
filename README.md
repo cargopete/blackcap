@@ -4,12 +4,13 @@ A WebAssembly jukebox. Cartridges are `.wasm` **component** files that export a
 tiny audio interface; the host loads them, calls `render()` on a worker thread,
 and plays the result through [cpal] over a wait-free SPSC ring buffer.
 
-> Status: **M3**. Host plays the built-in sine (M0), loads wasm cartridges (M1),
-> ships a cartridge SDK with a `song!{}` tracker DSL (M2), and now exposes
-> **host DSP imports** (M3, WIT `@0.2.0`): oscillators, an SVF, a freeverb
-> reverb, a feedback delay, and an oversampled anti-aliased waveshaper — plus a
-> `log` import. Cartridges that offload DSP to the host are smaller. The master
-> compressor/limiter, hot-reload/crossfade, and the TUI are still ahead (M4–M6).
+> Status: **M4**. Host plays the built-in sine (M0), loads wasm cartridges (M1),
+> ships a cartridge SDK with a `song!{}` tracker DSL (M2), exposes host DSP
+> imports (M3, WIT `@0.2.0`), and now **hot-reloads with crossfade**: render
+> workers feed their own rings, a mixer thread equal-power crossfades between
+> them and applies a master compressor + brickwall limiter before the output
+> ring. Drop a `.wasm` into `~/.jukebox/cartridges` and it fades in. The TUI
+> (M5–M6) and a real synth-metal track are still ahead.
 
 ## The shape of it
 
@@ -66,6 +67,23 @@ cargo run -p blackcap --release -- \
 `Ctrl+C` stops cleanly. `--seconds N` auto-stops. `--dry-run` skips the audio
 device entirely and is the way to verify a cartridge on a headless box.
 
+## Hot-reload & crossfade
+
+```sh
+# Crossfade demo: play the first, fade to the second after 4s.
+blackcap arpeggio-cartridge.wasm breakdown-cartridge.wasm
+
+# Watch ~/.jukebox/cartridges and crossfade to anything dropped in.
+blackcap --watch
+#   …then in another shell:  cp my_song.wasm ~/.jukebox/cartridges/
+```
+
+Each cartridge renders on its own worker thread into its own ring; a mixer
+thread equal-power crossfades between them (`--fade-ms`, default 600) and runs a
+master compressor + brickwall limiter (`--no-master` to bypass) before the
+output ring. A buggy cartridge can be torn down mid-fade without the audio
+thread noticing.
+
 ## Writing a cartridge
 
 Implement [`Player`] and hand it to `export_player!`; the SDK owns the
@@ -111,6 +129,8 @@ See `examples/arpeggio-cartridge` (clean), `examples/breakdown-cartridge`
 wit/jukebox.wit              cartridge contract @0.2.0 (types + dsp + log + player)
 crates/host/                 the jukebox host (cpal + wasmtime + rtrb)
   src/host.rs                host DSP resources (svf, freeverb, delay, waveshaper)
+  src/{worker,mixer}.rs      render workers + crossfade mixer thread
+  src/master.rs              master bus: compressor + brickwall limiter
 crates/sdk/                  jukebox-cartridge-sdk
   src/fx.rs                  inline DSP helpers
   src/{osc,env,perc,song}.rs oscillators, envelopes, percussion, song! DSL
