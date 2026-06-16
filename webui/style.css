@@ -51,17 +51,13 @@ body {
   transform-origin: top center;
   mask-image: linear-gradient(to bottom, transparent, #000 35%);
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%);
-  opacity: 0.55;
-  animation: gridscroll 5.5s linear infinite;
+  opacity: 0.4; /* static — no scroll */
 }
-@keyframes gridscroll { from { background-position: 0 0, 0 0; } to { background-position: 0 60px, 0 0; } }
 
 .fx-scan {
   background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.22) 2px 4px);
-  opacity: 0.30;
-  animation: scan 8s linear infinite;
+  opacity: 0.25; /* static */
 }
-@keyframes scan { from { transform: translateY(0); } to { transform: translateY(4px); } }
 
 .fx-noise {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -163,11 +159,7 @@ h3 .sub { color: var(--muted); font-weight: 400; letter-spacing: 0.5px; text-tra
 #playpause:hover:not(:disabled) { filter: drop-shadow(0 0 18px rgba(255, 45, 149, 0.9)); }
 #playpause:active:not(:disabled) { transform: scale(0.94); }
 #playpause:disabled { background: #221c38; color: var(--muted); filter: none; cursor: default; }
-#playpause.playing { animation: pulse 1.6s ease-in-out infinite; }
-@keyframes pulse {
-  0%, 100% { filter: drop-shadow(0 0 10px rgba(255, 45, 149, 0.5)); }
-  50% { filter: drop-shadow(0 0 22px rgba(255, 45, 149, 0.95)); }
-}
+#playpause.playing { filter: drop-shadow(0 0 18px rgba(255, 45, 149, 0.85)); } /* steady glow, no pulse */
 :focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
 
 .np { flex: 1; min-width: 0; }
@@ -247,6 +239,11 @@ h3 .sub { color: var(--muted); font-weight: 400; letter-spacing: 0.5px; text-tra
 .cell.accent { color: var(--hot); font-weight: bold; text-shadow: 0 0 7px var(--hot); }
 .cell.ghost { color: #5b5482; }
 .cell.off { color: #2c2742; }
+
+/* honour the OS "reduce motion" setting — no animations or transitions */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
 
 /* scrollbars */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
