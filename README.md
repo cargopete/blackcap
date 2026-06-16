@@ -12,7 +12,9 @@ and plays the result through [cpal] over a wait-free SPSC ring buffer.
 > ring. Drop a `.wasm` into `~/.jukebox/cartridges` and it fades in. A worked
 > ~70 s synth-metal track ships in `examples/synthcore-track` (M5), and a
 > **ratatui front-end** (M6, `--tui`) gives you a cartridge list, now-playing,
-> a VU meter, and a timeline. M0–M6 complete.
+> a VU meter, and a timeline. M0–M6 complete. **v2** adds host **sample
+> playback** (WIT `@0.3.0`): drop `.wav` files into `~/.jukebox/samples` and
+> cartridges pitch-shift them — the path to real recorded (guitar/drum) timbre.
 
 ## The shape of it
 
@@ -149,7 +151,30 @@ examples/arpeggio-cartridge/ M2 three-channel arpeggio (SDK + song!)
 examples/breakdown-cartridge/ M2 drop-A metalcore breakdown (inline DSP)
 examples/host-dsp-cartridge/ M3 chug crunched + reverbed by host DSP imports
 examples/synthcore-track/    M5 "Eutectic Point" — a ~70s synth-metal track
+examples/sampled-guitar/     v2 Karplus-Strong pluck via the host sampler
+  src/sampler.rs (host)      WAV library + interpolating playback voices
 ```
+
+## Sample playback (v2)
+
+The host owns sample PCM and the playback voices; cartridges trigger them
+pitch-shifted. Samples come from `~/.jukebox/samples/<name>.wav` (decoded and
+resampled to the device rate) or from PCM the cartridge hands over:
+
+```rust
+use jukebox_cartridge_sdk::sampler::{Sample, SampleVoice};
+
+let sample = Sample::from_library("guitar")          // real DI .wav, or…
+    .unwrap_or_else(|| Sample::from_pcm(&my_pcm));    // …cartridge-provided
+let voice = SampleVoice::new();
+voice.trigger(&sample, target_hz / root_hz, 0.8);     // pitch-shift by speed
+let block = voice.render(num_frames);
+```
+
+`examples/sampled-guitar` synthesises a plucked string so it works with no
+external files; drop a `guitar.wav` into the samples dir and it uses that
+instead. This is the only route to literal recorded timbre — pure synthesis
+caps out at synthcore.
 
 Hear the worked track: `just play synthcore-track` (drop-A, A phrygian; intro →
 verse riff → breakdown → lead chorus → outro, ~70 s). Pure synthesis, so it
