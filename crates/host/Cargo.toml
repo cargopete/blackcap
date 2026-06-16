@@ -1,0 +1,20 @@
+[package]
+name = "blackcap"
+description = "A WebAssembly jukebox: load .wasm component cartridges and play them through cpal."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "blackcap"
+path = "src/main.rs"
+
+[dependencies]
+wasmtime = { workspace = true }
+cpal = { workspace = true }
+rtrb = { workspace = true }
+anyhow = { workspace = true }
+ctrlc = { workspace = true }
+wasmtime-wasi = "45"

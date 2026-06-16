@@ -1,0 +1,22 @@
+[package]
+name = "sine-cartridge"
+description = "M1 hand-rolled blackcap cartridge: a 220 Hz sine, no SDK."
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cargopete/blackcap"
+
+# Detached from the host workspace: this builds for wasm32-wasip2.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.58"
+
+[profile.release]
+# Small, tidy cartridges.
+opt-level = "s"
+lto = true
+strip = true
