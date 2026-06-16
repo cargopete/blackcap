@@ -1,16 +1,20 @@
 //! blackcap — a WebAssembly jukebox.
 //!
-//! Loads `.wasm` component cartridges (or a built-in sine, for M0) and plays
-//! them through cpal. Render workers feed their own rings; a mixer thread
-//! crossfades between them and applies the master chain before the output ring.
+//! Loads `.wasm` component cartridges (or a built-in sine) and plays them
+//! through cpal. Render workers feed their own rings; a mixer thread crossfades
+//! between them and applies the master chain before the output ring. `--tui`
+//! puts a ratatui front-end on top.
 
 mod audio;
+mod controller;
 mod engine;
 mod host;
 mod master;
 mod mixer;
 mod player;
+mod shared;
 mod source;
+mod tui;
 mod wit;
 mod worker;
 
@@ -22,10 +26,11 @@ use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{bail, Result};
 
+use controller::Controller;
 use master::MasterChain;
 use mixer::{Mixer, Switch};
+use shared::Shared;
 use source::{block_stats, sine_source, BlockSource};
-use worker::Worker;
 
 /// ~0.5 s of interleaved stereo at 48 kHz per ring.
 pub const RING_CAPACITY: usize = 48_000;
@@ -35,14 +40,14 @@ const PREFILL: Duration = Duration::from_millis(120);
 const SINE_FREQ: f32 = 220.0; // A3
 const SINE_AMP: f32 = 0.2; // ~-14 dBFS
 
-/// Extra time after a fade before tearing down the faded-out worker, so it keeps
-/// feeding the mixer for the whole crossfade.
+/// Extra time after a fade before tearing down the faded-out worker.
 const RETIRE_MARGIN: Duration = Duration::from_millis(300);
 
 struct Args {
     cartridges: Vec<PathBuf>,
     sine: bool,
     dry_run: bool,
+    tui: bool,
     watch: bool,
     no_master: bool,
     seconds: Option<f64>,
@@ -58,12 +63,12 @@ fn print_help() {
     println!(
         "blackcap — a WebAssembly jukebox\n\n\
          USAGE:\n    blackcap [CARTRIDGE.wasm ...] [OPTIONS]\n\n\
-         With no cartridge (or --sine) the built-in sine plays. Two cartridges\n\
-         crossfade (first → second after --fade-after). --watch hot-reloads from\n\
-         ~/.jukebox/cartridges, crossfading to anything dropped in.\n\n\
+         No cartridge (or --sine) plays the built-in sine. Two cartridges\n\
+         crossfade. --watch and --tui hot-reload from ~/.jukebox/cartridges.\n\n\
          OPTIONS:\n\
-         \x20   --sine               Play the built-in sine\n\
+         \x20   --tui                Interactive ratatui front-end\n\
          \x20   --watch              Watch ~/.jukebox/cartridges; crossfade to new drops\n\
+         \x20   --sine               Play the built-in sine\n\
          \x20   --no-master          Bypass the master compressor + limiter\n\
          \x20   --fade-ms <N>        Crossfade length in ms (default 600)\n\
          \x20   --fade-after <S>     Seconds before the two-cartridge crossfade (default 4)\n\
@@ -82,6 +87,7 @@ fn parse_args() -> Result<Option<Args>> {
         cartridges: Vec::new(),
         sine: false,
         dry_run: false,
+        tui: false,
         watch: false,
         no_master: false,
         seconds: None,
@@ -104,6 +110,7 @@ fn parse_args() -> Result<Option<Args>> {
                 print_help();
                 return Ok(None);
             }
+            "--tui" => args.tui = true,
             "--sine" => args.sine = true,
             "--watch" => args.watch = true,
             "--no-master" => args.no_master = true,
@@ -128,10 +135,13 @@ fn main() -> Result<()> {
         None => return Ok(()),
     };
 
-    let use_sine = args.sine || (args.cartridges.is_empty() && !args.watch);
+    let use_sine = args.sine || (args.cartridges.is_empty() && !args.watch && !args.tui);
 
     if args.dry_run {
         return dry_run(&args, use_sine);
+    }
+    if args.tui && !std::io::IsTerminal::is_terminal(&std::io::stdout()) {
+        bail!("--tui needs an interactive terminal");
     }
     play(&args, use_sine)
 }
@@ -161,7 +171,6 @@ fn dry_run(args: &Args, use_sine: bool) -> Result<()> {
     Ok(())
 }
 
-/// Build a one-shot [`BlockSource`] for `--dry-run` (sine or first cartridge).
 fn build_source(args: &Args, use_sine: bool, sample_rate: u32) -> Result<(BlockSource, String)> {
     if use_sine {
         let desc = format!("built-in sine {:.1} Hz", args.freq);
@@ -179,8 +188,8 @@ fn build_source(args: &Args, use_sine: bool, sample_rate: u32) -> Result<(BlockS
     Ok((source, desc))
 }
 
-/// Open the audio device, spin up the mixer, and run the controller loop
-/// (crossfade demo and/or hot-reload watching).
+/// Open the audio device, spin up the mixer, and run either the TUI or the
+/// headless controller loop.
 fn play(args: &Args, use_sine: bool) -> Result<()> {
     let underruns = Arc::new(AtomicU64::new(0));
     let running = Arc::new(AtomicBool::new(true));
@@ -189,31 +198,36 @@ fn play(args: &Args, use_sine: bool) -> Result<()> {
     let out = audio::open(out_consumer, Arc::clone(&underruns))?;
     let sr = out.sample_rate;
     let block_frames = args.block_frames;
-    println!("blackcap: device {} Hz, {} channel(s)", sr, out.channels);
-    if args.no_master {
-        println!("blackcap: master chain bypassed");
+    if !args.tui {
+        println!("blackcap: device {} Hz, {} channel(s)", sr, out.channels);
+        if args.no_master {
+            println!("blackcap: master chain bypassed");
+        }
     }
 
     let engine = engine::make_engine()?;
     engine::spawn_epoch_ticker(&engine);
 
-    // Mixer thread.
+    let shared = Arc::new(Shared::new());
     let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded::<Switch>();
     let master = MasterChain::new(sr, !args.no_master);
-    let mixer = Mixer::new(out_producer, cmd_rx, Arc::clone(&running), block_frames as usize, master);
+    let mixer = Mixer::new(out_producer, cmd_rx, Arc::clone(&running), block_frames as usize, master, Arc::clone(&shared));
     let mixer_handle = std::thread::spawn(move || mixer.run());
 
-    // Initial source (None if watching an empty directory).
-    let mut active: Option<Worker> = if use_sine {
-        Some(worker::spawn_sine(sr, args.freq, SINE_AMP, block_frames))
+    let fade_frames = (args.fade_ms as f32 * 0.001 * sr as f32) as usize;
+    let fade_dur = Duration::from_millis(args.fade_ms) + RETIRE_MARGIN;
+    let mut ctl = Controller::new(engine, cmd_tx, Arc::clone(&shared), sr, block_frames, fade_frames, fade_dur);
+
+    // Initial source.
+    if use_sine {
+        ctl.play_sine(args.freq, SINE_AMP);
     } else if !args.cartridges.is_empty() {
-        Some(worker::spawn_cartridge(&engine, &args.cartridges[0], sr, block_frames)?)
-    } else {
-        None
-    };
-    if let Some(w) = active.as_mut() {
-        println!("blackcap: now playing — {} by {}", w.title, w.artist);
-        cmd_tx.send(Switch { consumer: w.take_consumer(), fade_frames: 0 }).ok();
+        ctl.crossfade_to(&args.cartridges[0])?;
+    }
+    if let Some((title, artist)) = ctl.active_title() {
+        if !args.tui {
+            println!("blackcap: now playing — {title} by {artist}");
+        }
     }
 
     std::thread::sleep(PREFILL);
@@ -225,11 +239,31 @@ fn play(args: &Args, use_sine: bool) -> Result<()> {
     use cpal::traits::StreamTrait;
     out.stream.play()?;
 
-    let fade_frames = (args.fade_ms as f32 * 0.001 * sr as f32) as usize;
-    let fade_dur = Duration::from_millis(args.fade_ms) + RETIRE_MARGIN;
+    if args.tui {
+        let dir = cartridges_dir();
+        let _ = std::fs::create_dir_all(&dir);
+        tui::run(&mut ctl, Arc::clone(&running), Arc::clone(&underruns), dir)?;
+    } else {
+        headless_loop(args, sr, &mut ctl, &running);
+    }
 
-    // Watch state: pre-seed with the directory's current contents so existing
-    // files don't trigger an immediate crossfade.
+    running.store(false, Ordering::Relaxed);
+    drop(out.stream);
+    let _ = mixer_handle.join();
+    ctl.shutdown();
+
+    let total = underruns.load(Ordering::Relaxed);
+    if total > 0 {
+        eprintln!("blackcap: {total} underrun sample(s)");
+    }
+    if !args.tui {
+        println!("blackcap: stopped cleanly.");
+    }
+    Ok(())
+}
+
+/// The non-TUI controller loop: crossfade demo and/or hot-reload watching.
+fn headless_loop(args: &Args, _sr: u32, ctl: &mut Controller, running: &Arc<AtomicBool>) {
     let watch_dir = cartridges_dir();
     let mut seen: HashMap<PathBuf, SystemTime> = HashMap::new();
     if args.watch {
@@ -238,7 +272,6 @@ fn play(args: &Args, use_sine: bool) -> Result<()> {
         println!("blackcap: watching {} for cartridges", watch_dir.display());
     }
 
-    let mut retiring: Vec<(Worker, Instant)> = Vec::new();
     let mut demo_done = false;
     let started = Instant::now();
 
@@ -248,82 +281,31 @@ fn play(args: &Args, use_sine: bool) -> Result<()> {
                 break;
             }
         }
+        ctl.reap();
 
-        // Tear down workers whose fade-out has finished.
-        let now = Instant::now();
-        retiring.retain_mut(|(w, deadline)| {
-            if now >= *deadline {
-                w.stop();
-                false
-            } else {
-                true
-            }
-        });
-
-        // Two-cartridge crossfade demo (one-shot).
         if !demo_done
             && !args.watch
             && args.cartridges.len() >= 2
             && started.elapsed() >= Duration::from_secs_f64(args.fade_after)
         {
-            crossfade_to(&engine, &args.cartridges[1], sr, block_frames, fade_frames, fade_dur, &cmd_tx, &mut active, &mut retiring);
+            if let Err(e) = ctl.crossfade_to(&args.cartridges[1]) {
+                eprintln!("blackcap: {e:#}");
+            } else if let Some((t, a)) = ctl.active_title() {
+                println!("blackcap: crossfading to {t} by {a}");
+            }
             demo_done = true;
         }
 
-        // Hot-reload: crossfade to anything new dropped into the watch dir.
         if args.watch {
             if let Some(path) = poll_new_cartridge(&watch_dir, &mut seen) {
-                crossfade_to(&engine, &path, sr, block_frames, fade_frames, fade_dur, &cmd_tx, &mut active, &mut retiring);
+                match ctl.crossfade_to(&path) {
+                    Ok(()) => println!("blackcap: crossfading to {}", path.display()),
+                    Err(e) => eprintln!("blackcap: skipping {} — {e:#}", path.display()),
+                }
             }
         }
 
         std::thread::sleep(Duration::from_millis(100));
-    }
-
-    running.store(false, Ordering::Relaxed);
-    drop(out.stream);
-    let _ = mixer_handle.join();
-    if let Some(mut w) = active {
-        w.stop();
-    }
-    for (mut w, _) in retiring {
-        w.stop();
-    }
-
-    let total = underruns.load(Ordering::Relaxed);
-    if total > 0 {
-        eprintln!("blackcap: {total} underrun sample(s)");
-    }
-    println!("blackcap: stopped cleanly.");
-    Ok(())
-}
-
-/// Spawn a worker for `path` and crossfade to it, retiring the old `active`.
-#[allow(clippy::too_many_arguments)]
-fn crossfade_to(
-    engine: &wasmtime::Engine,
-    path: &Path,
-    sr: u32,
-    block_frames: u32,
-    fade_frames: usize,
-    fade_dur: Duration,
-    cmd_tx: &crossbeam_channel::Sender<Switch>,
-    active: &mut Option<Worker>,
-    retiring: &mut Vec<(Worker, Instant)>,
-) {
-    match worker::spawn_cartridge(engine, path, sr, block_frames) {
-        Ok(mut w) => {
-            // No fade for the very first source (watch mode); fade thereafter.
-            let fade = if active.is_some() { fade_frames } else { 0 };
-            let verb = if active.is_some() { "crossfading" } else { "now playing" };
-            println!("blackcap: {verb} {} by {} ({})", w.title, w.artist, path.display());
-            cmd_tx.send(Switch { consumer: w.take_consumer(), fade_frames: fade }).ok();
-            if let Some(old) = active.take() {
-                retiring.push((old, Instant::now() + fade_dur));
-            }
-            *active = Some(w);
-        }
-        Err(e) => eprintln!("blackcap: skipping {} — {e:#}", path.display()),
     }
 }
 
@@ -345,7 +327,6 @@ fn scan_dir(dir: &Path, seen: &mut HashMap<PathBuf, SystemTime>) {
     }
 }
 
-/// Return one cartridge that's new or newly-modified since last seen.
 fn poll_new_cartridge(dir: &Path, seen: &mut HashMap<PathBuf, SystemTime>) -> Option<PathBuf> {
     let entries = std::fs::read_dir(dir).ok()?;
     for entry in entries.flatten() {
@@ -357,8 +338,7 @@ fn poll_new_cartridge(dir: &Path, seen: &mut HashMap<PathBuf, SystemTime>) -> Op
             Ok(t) => t,
             Err(_) => continue,
         };
-        let changed = seen.get(&path).map_or(true, |&prev| mtime > prev);
-        if changed {
+        if seen.get(&path).map_or(true, |&prev| mtime > prev) {
             seen.insert(path.clone(), mtime);
             return Some(path);
         }
