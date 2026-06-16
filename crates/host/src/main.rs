@@ -46,6 +46,7 @@ const RETIRE_MARGIN: Duration = Duration::from_millis(300);
 
 struct Args {
     cartridges: Vec<PathBuf>,
+    render: Option<PathBuf>,
     sine: bool,
     dry_run: bool,
     tui: bool,
@@ -73,6 +74,7 @@ fn print_help() {
          \x20   --no-master          Bypass the master compressor + limiter\n\
          \x20   --fade-ms <N>        Crossfade length in ms (default 600)\n\
          \x20   --fade-after <S>     Seconds before the two-cartridge crossfade (default 4)\n\
+         \x20   --render <FILE.wav>  Render the cartridge's full loop to a WAV (headless)\n\
          \x20   --dry-run            No audio device: render blocks and print peak/RMS\n\
          \x20   --seconds <N>        Auto-stop after N seconds\n\
          \x20   --blocks <N>         Blocks to render in --dry-run (default 4)\n\
@@ -86,6 +88,7 @@ fn print_help() {
 fn parse_args() -> Result<Option<Args>> {
     let mut args = Args {
         cartridges: Vec::new(),
+        render: None,
         sine: false,
         dry_run: false,
         tui: false,
@@ -112,6 +115,7 @@ fn parse_args() -> Result<Option<Args>> {
                 return Ok(None);
             }
             "--tui" => args.tui = true,
+            "--render" => args.render = Some(PathBuf::from(next_val("--render")?)),
             "--sine" => args.sine = true,
             "--watch" => args.watch = true,
             "--no-master" => args.no_master = true,
@@ -138,6 +142,9 @@ fn main() -> Result<()> {
 
     let use_sine = args.sine || (args.cartridges.is_empty() && !args.watch && !args.tui);
 
+    if let Some(out) = args.render.clone() {
+        return render_to_wav(&args, &out);
+    }
     if args.dry_run {
         return dry_run(&args, use_sine);
     }
@@ -169,6 +176,57 @@ fn dry_run(args: &Args, use_sine: bool) -> Result<()> {
     if peak_all <= 0.0 {
         bail!("source produced pure silence — something is wrong");
     }
+    Ok(())
+}
+
+/// Headless render of a cartridge's full loop to a 16-bit stereo WAV, through
+/// the real master chain. No audio device needed — used to feed the web UI.
+fn render_to_wav(args: &Args, out: &Path) -> Result<()> {
+    let path = args
+        .cartridges
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("--render needs a cartridge path"))?;
+    let sr = args.sample_rate;
+    let block_frames = args.block_frames;
+
+    let engine = engine::make_engine()?;
+    engine::spawn_epoch_ticker(&engine);
+    let mut cart = player::Cartridge::load(&engine, path, sr)?;
+
+    // One full loop, or --seconds (default 10 s) for generative cartridges.
+    let total_frames = if cart.duration_frames > 0 {
+        cart.duration_frames
+    } else {
+        (args.seconds.unwrap_or(10.0) * sr as f64) as u64
+    };
+
+    let mut master = MasterChain::new(sr, !args.no_master);
+    let spec = hound::WavSpec {
+        channels: 2,
+        sample_rate: sr,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = hound::WavWriter::create(out, spec)?;
+
+    let mut start = 0u64;
+    while start < total_frames {
+        let want = block_frames.min((total_frames - start) as u32);
+        let block = cart.render(start, want)?;
+        for frame in block.chunks_exact(2) {
+            let (l, r) = master.process(frame[0], frame[1]);
+            writer.write_sample((l.clamp(-1.0, 1.0) * 32767.0) as i16)?;
+            writer.write_sample((r.clamp(-1.0, 1.0) * 32767.0) as i16)?;
+        }
+        start += want as u64;
+    }
+    writer.finalize()?;
+    println!(
+        "rendered \"{}\" — {:.1}s → {}",
+        cart.title,
+        total_frames as f64 / sr as f64,
+        out.display()
+    );
     Ok(())
 }
 
