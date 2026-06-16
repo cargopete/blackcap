@@ -3,42 +3,47 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>blackcap — jukebox</title>
+<title>blackcap // jukebox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Chakra+Petch:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+<!-- synthwave atmosphere: sun glow, perspective grid, scanlines, grain -->
+<div class="fx fx-sun" aria-hidden="true"></div>
+<div class="fx fx-grid" aria-hidden="true"></div>
+<div class="fx fx-scan" aria-hidden="true"></div>
+<div class="fx fx-noise" aria-hidden="true"></div>
+
 <header>
-  <h1>blackcap<span class="sub">// WebAssembly jukebox</span></h1>
-  <div class="hint">structure parsed from <code>song!{}</code> · audio rendered by the real host</div>
+  <h1>blackcap</h1>
+  <div class="tagline">wasm jukebox<span class="tick">//</span>structure from <code>song!{}</code><span class="tick">//</span>audio from the real host</div>
 </header>
 
 <main>
-  <!-- Jukebox: the cartridge shelf -->
   <aside id="jukebox">
-    <h2>Cartridges</h2>
+    <h2>cartridges</h2>
     <ul id="cartridge-list"></ul>
   </aside>
 
   <section id="stage">
     <div id="transport">
-      <button id="playpause" disabled>▶</button>
+      <button id="playpause" disabled aria-label="play / pause">&#9654;</button>
       <div class="np">
-        <div id="np-title">— select a cartridge —</div>
+        <div id="np-title">select a cartridge</div>
         <div id="np-tags"></div>
       </div>
-      <div id="clock">0:00 / 0:00</div>
+      <div id="clock">0:00<span class="slash">/</span>0:00</div>
     </div>
 
-    <!-- Live analyser -->
-    <canvas id="scope" height="90"></canvas>
+    <canvas id="scope" height="96" aria-hidden="true"></canvas>
 
-    <!-- The "bones": arrangement of the sequence -->
-    <h3>Bones <span class="muted">— arrangement (click to seek)</span></h3>
+    <h3>bones <span class="sub">arrangement<span class="dot">·</span>click or &#8592; &#8594; to seek</span></h3>
     <div id="arrangement"></div>
     <div id="legend"></div>
 
-    <!-- The "breakdown": tracker grid of the current pattern -->
-    <h3>Breakdown <span class="muted" id="pattern-name">— pattern</span></h3>
+    <h3>breakdown <span class="sub" id="pattern-name">pattern</span></h3>
     <div id="tracker"></div>
   </section>
 </main>

@@ -41,13 +41,13 @@ function patternRows(p) {
 // --- section colour by pattern name ----------------------------------------
 function patternColor(name) {
   const n = name.toLowerCase();
-  if (n.includes("intro") || n.includes("build")) return "#4b86d6";
-  if (n.includes("verse")) return "#e08a3c";
-  if (n.includes("chorus") || n.includes("lead")) return "#4fbf6f";
-  if (n.includes("drop") || n.includes("trance")) return "#b765d6";
-  if (n.includes("break")) return "#d6534b";
-  if (n.includes("outro") || n.includes("stop")) return "#7a8398";
-  return "#5a93a8"; // default (riffs, a/b, …)
+  if (n.includes("intro") || n.includes("build")) return "#1fe0ff"; // cyan
+  if (n.includes("drop") || n.includes("trance")) return "#ff2d95"; // magenta
+  if (n.includes("break")) return "#ff3b6b"; // hot red
+  if (n.includes("chorus") || n.includes("lead")) return "#a857ff"; // purple
+  if (n.includes("verse")) return "#ff9d3d"; // orange
+  if (n.includes("outro") || n.includes("stop")) return "#6b6494"; // dim
+  return "#28c0a8"; // default teal (riffs, a/b, …)
 }
 
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -59,12 +59,12 @@ async function boot() {
   const list = $("cartridge-list");
   data.tracks.forEach((t, i) => {
     const li = document.createElement("li");
+    li.style.setProperty("--i", i);
     li.innerHTML = `<div class="t">${t.title}</div>
-      <div class="meta">${t.id} · ${t.tags.join(" · ") || "—"}</div>
-      ${t.hasWav ? "" : '<div class="nowav">structure only — run build.sh for audio</div>'}`;
+      <div class="meta">${t.id} · ${t.tags.join(" · ") || "·"}</div>
+      ${t.hasWav ? "" : '<div class="nowav">structure only · run build.sh for audio</div>'}`;
     li.onclick = () => selectTrack(t, li);
     list.appendChild(li);
-    if (i === 0) li.dataset.first = "1";
   });
   // auto-select the first track with audio, else the first
   const first = data.tracks.find((t) => t.hasWav) || data.tracks[0];
@@ -119,8 +119,10 @@ function renderArrangement() {
     const div = document.createElement("div");
     div.className = "seg";
     div.style.flex = `${seg.rows} 0 0`;
-    div.style.background = patternColor(seg.name);
-    div.textContent = seg.name;
+    div.style.setProperty("--c", patternColor(seg.name));
+    const label = document.createElement("span");
+    label.textContent = seg.name;
+    div.appendChild(label);
     arr.appendChild(div);
   }
   const ph = document.createElement("div");
@@ -139,7 +141,7 @@ function renderLegend() {
 }
 
 function renderTracker(pattern, col) {
-  $("pattern-name").textContent = `— ${pattern.name}`;
+  $("pattern-name").textContent = pattern.name;
   const root = $("tracker");
   root.innerHTML = "";
   trackerCols = [];
@@ -219,9 +221,16 @@ $("playpause").onclick = () => {
   if (audio.paused) audio.play();
   else audio.pause();
 };
-audio.onplay = () => ($("playpause").textContent = "⏸");
-audio.onpause = () => ($("playpause").textContent = "▶");
-audio.onended = () => ($("playpause").textContent = "▶");
+audio.onplay = () => {
+  $("playpause").textContent = "⏸";
+  $("playpause").classList.add("playing");
+};
+const stopUi = () => {
+  $("playpause").textContent = "▶";
+  $("playpause").classList.remove("playing");
+};
+audio.onpause = stopUi;
+audio.onended = stopUi;
 
 function frame() {
   if (track) {
@@ -258,12 +267,17 @@ function drawScope() {
   }
 }
 
-// Spacebar toggles play/pause.
+// Keyboard: space = play/pause, arrows = seek ±5 s.
 document.addEventListener("keydown", (e) => {
   if (e.code === "Space" || e.key === " ") {
     e.preventDefault();
     const btn = $("playpause");
     if (!btn.disabled) btn.click();
+  } else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && track && track.hasWav) {
+    e.preventDefault();
+    const d = audioDur();
+    const t = audio.currentTime + (e.key === "ArrowRight" ? 5 : -5);
+    seekToFrac(Math.max(0, Math.min(0.999, t / d)));
   }
 });
 
