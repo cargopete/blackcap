@@ -1,7 +1,7 @@
 //! Synthesised percussion (RFC part 2). Drum *design* is per-song creative
 //! choice with trivial state, so it lives cartridge-side, not in the host.
 
-use crate::dsp::{OnePoleHp, OnePoleLp, Svf};
+use crate::fx::{OnePoleHp, OnePoleLp, Svf};
 use crate::osc::white;
 
 /// Kick: a pitch-dropped sine body, a short low-passed noise "beater" click on

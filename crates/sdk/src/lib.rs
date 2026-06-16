@@ -12,8 +12,8 @@
 //! export_player!(MySong);
 //! ```
 
-pub mod dsp;
 pub mod env;
+pub mod fx;
 pub mod osc;
 pub mod perc;
 pub mod song;
@@ -33,6 +33,13 @@ pub mod bindings {
 
 pub use bindings::exports::jukebox::cartridge::player::Metadata;
 pub use bindings::jukebox::cartridge::types::LoopPoint;
+
+/// Host-provided DSP imports: `dsp::Reverb`, `dsp::BiquadSvf`, `dsp::Delay`,
+/// `dsp::Waveshaper`, `dsp::ShapeKind`, and the stateless `dsp::osc_*` functions.
+/// (The SDK's *inline* DSP helpers live in [`fx`].)
+pub use bindings::jukebox::cartridge::dsp;
+/// Host `log` import — `log::log("…")` prints to the host's stderr.
+pub use bindings::jukebox::cartridge::log;
 
 /// The trait a cartridge implements. Mirrors the WIT `player` interface, but
 /// with `&mut self` ergonomics — the SDK bridges to the stateless component
@@ -137,7 +144,8 @@ macro_rules! export_player {
 
 /// Everything a typical cartridge needs in one glob.
 pub mod prelude {
-    pub use crate::dsp::{interleave, soft_clip, OnePoleHp, OnePoleLp};
+    pub use crate::fx::{interleave, soft_clip, OnePoleHp, OnePoleLp, Svf};
+    pub use crate::{dsp, log};
     pub use crate::env::{Adsr, Gate};
     pub use crate::osc::{Noise, Osc, SuperSaw, Waveform};
     pub use crate::perc::{CymbalVoice, KickVoice, SnareVoice};
