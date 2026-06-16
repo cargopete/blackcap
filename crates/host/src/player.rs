@@ -17,9 +17,12 @@ use crate::wit;
 pub struct Cartridge {
     store: Store<HostState>,
     world: wit::Cartridge,
-    pub sample_rate: u32,
     pub title: String,
     pub artist: String,
+    // Surfaced for the metadata browser at M6.
+    #[allow(dead_code)]
+    pub sample_rate: u32,
+    #[allow(dead_code)]
     pub duration_frames: u64,
 }
 
