@@ -4,9 +4,12 @@ A WebAssembly jukebox. Cartridges are `.wasm` **component** files that export a
 tiny audio interface; the host loads them, calls `render()` on a worker thread,
 and plays the result through [cpal] over a wait-free SPSC ring buffer.
 
-> Status: **M1**. The host plays the built-in sine (M0) *and* loads a real wasm
-> cartridge that exports `render()` (M1). The cartridge SDK, host DSP imports,
-> hot-reload/crossfade, and the TUI are still ahead (M2–M6).
+> Status: **M2**. The host plays the built-in sine (M0) and loads real wasm
+> cartridges (M1). The cartridge SDK (M2) is up: oscillators, envelopes,
+> percussion, a de-clicking gate, and a `song!{}` tracker DSL — enough to write
+> a three-channel arpeggio or a drop-A breakdown. Host DSP imports
+> (oversampled waveshaper, reverb, master limiter), hot-reload/crossfade, and
+> the TUI are still ahead (M3–M6).
 
 ## The shape of it
 
@@ -37,39 +40,64 @@ Requires a Rust toolchain with the `wasm32-wasip2` target:
 rustup target add wasm32-wasip2
 ```
 
-With [`just`](https://github.com/casey/just):
+With [`just`](https://github.com/casey/just) (recipes take a cartridge dir name):
 
 ```sh
-just sine        # M0: built-in sine through your speakers
-just play        # M1: build the sine cartridge and play it
-just dry-run     # headless: render blocks, print peak/RMS (no audio device)
-just inspect     # show the WIT the built cartridge exports
+just sine                       # M0: built-in sine through your speakers
+just play arpeggio-cartridge    # build + play the three-channel arpeggio
+just play breakdown-cartridge   # build + play the drop-A breakdown
+just dry-run breakdown-cartridge  # headless: render blocks, print peak/RMS
+just inspect arpeggio-cartridge   # show the WIT the cartridge exports
+just test                       # SDK unit tests
 ```
 
 Or by hand:
 
 ```sh
-# Host
-cargo build -p blackcap --release
+cargo build -p blackcap --release            # host
 
-# Cartridge → wasm component
-cd examples/sine-cartridge
+cd examples/arpeggio-cartridge               # a cartridge → wasm component
 cargo build --target wasm32-wasip2 --release
 
-# Play it
 cargo run -p blackcap --release -- \
-    examples/sine-cartridge/target/wasm32-wasip2/release/sine_cartridge.wasm
+    examples/arpeggio-cartridge/target/wasm32-wasip2/release/arpeggio_cartridge.wasm
 ```
 
 `Ctrl+C` stops cleanly. `--seconds N` auto-stops. `--dry-run` skips the audio
 device entirely and is the way to verify a cartridge on a headless box.
 
+## Writing a cartridge
+
+Implement [`Player`] and hand it to `export_player!`; the SDK owns the
+wit-bindgen glue. The `song!{}` macro is a tracker DSL — note lanes (`c5 eb5`),
+trigger lanes (`x - x -`) and gate lanes (`X-x- ----`) share one syntax, parsed
+once at `init()`:
+
+```rust
+use jukebox_cartridge_sdk::prelude::*;
+
+const SONG: TrackerSong = song! {
+    tempo: 140; rows_per_beat: 4;
+    pattern "a" {
+        lead: "a4 c5 e5 a5  e5 c5 a4 c5";
+        hat:  "x  -  x  -   x  -  x  -";
+    }
+    sequence: [a, a];
+};
+```
+
+See `examples/arpeggio-cartridge` (clean) and `examples/breakdown-cartridge`
+(percussion + de-click gate + sidechain). [`Player`]: crates/sdk/src/lib.rs
+
 ## Layout
 
 ```
-wit/jukebox.wit            cartridge contract (types + player + world)
-crates/host/               the jukebox host (cpal + wasmtime + rtrb)
-examples/sine-cartridge/   M1 hand-rolled cartridge (no SDK)
+wit/jukebox.wit              cartridge contract (types + player + world)
+crates/host/                 the jukebox host (cpal + wasmtime + rtrb)
+crates/sdk/                  jukebox-cartridge-sdk: osc, env, perc, song! DSL
+examples/sine-cartridge/     M1 hand-rolled cartridge (no SDK)
+examples/arpeggio-cartridge/ M2 three-channel arpeggio (SDK + song!)
+examples/breakdown-cartridge/ M2 drop-A metalcore breakdown (inline DSP)
 ```
 
 ## Licence

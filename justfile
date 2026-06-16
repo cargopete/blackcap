@@ -1,8 +1,7 @@
 # blackcap — task runner
 # `just` is optional; every recipe is a plain cargo invocation underneath.
 
-cartridge_dir := "examples/sine-cartridge"
-cartridge_wasm := "examples/sine-cartridge/target/wasm32-wasip2/release/sine_cartridge.wasm"
+host_run := "cargo run -p blackcap --release --"
 
 default:
     @just --list
@@ -11,30 +10,35 @@ default:
 build-host:
     cargo build -p blackcap --release
 
-# Build the example sine cartridge to a wasm component.
-build-cartridge:
-    cd {{cartridge_dir}} && cargo build --target wasm32-wasip2 --release
+# Run the SDK unit tests (native target).
+test:
+    cd crates/sdk && cargo test
 
-# Build everything.
-build: build-host build-cartridge
+# Build a cartridge in examples/ to a wasm component. e.g. `just build arpeggio-cartridge`
+build CART:
+    cd examples/{{CART}} && cargo build --target wasm32-wasip2 --release
 
-# Inspect the WIT the built cartridge actually exports.
-inspect: build-cartridge
-    wasm-tools component wit {{cartridge_wasm}}
+# The path to a built cartridge's wasm.
+_wasm CART:
+    @echo "examples/{{CART}}/target/wasm32-wasip2/release/{{replace(CART, "-", "_")}}.wasm"
 
-# Play the built-in sine (M0).
+# Play a cartridge through the speakers. e.g. `just play arpeggio-cartridge`
+play CART: (build CART)
+    {{host_run}} `just _wasm {{CART}}`
+
+# Headless smoke test: render a cartridge with no audio device.
+dry-run CART: (build CART)
+    {{host_run}} `just _wasm {{CART}}` --dry-run --blocks 8
+
+# Inspect the WIT a built cartridge exports.
+inspect CART: (build CART)
+    wasm-tools component wit `just _wasm {{CART}}`
+
+# Play the built-in sine (M0), no cartridge.
 sine:
-    cargo run -p blackcap --release -- --sine
+    {{host_run}} --sine
 
-# Play the sine cartridge through the speakers (M1).
-play: build-cartridge
-    cargo run -p blackcap --release -- {{cartridge_wasm}}
-
-# Headless smoke test: render the cartridge with no audio device.
-dry-run: build-cartridge
-    cargo run -p blackcap --release -- {{cartridge_wasm}} --dry-run
-
-# Drop the cartridge into the jukebox library dir.
-install-cartridge: build-cartridge
+# Drop a built cartridge into the jukebox library dir.
+install CART: (build CART)
     mkdir -p ~/.jukebox/cartridges
-    cp {{cartridge_wasm}} ~/.jukebox/cartridges/
+    cp `just _wasm {{CART}}` ~/.jukebox/cartridges/
