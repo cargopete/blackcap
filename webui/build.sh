@@ -5,16 +5,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Cartridges shown in the web jukebox (must match INCLUDE in extract.py).
+TRACKS="blackstar sampled-guitar featherz"
+
 echo "==> building host"
 cargo build -p blackcap --release
 
-mkdir -p webui/tracks
+rm -rf webui/tracks && mkdir -p webui/tracks
 HOST=./target/release/blackcap
 
-for dir in examples/*/; do
-  name=$(basename "$dir")
-  [ -f "${dir}src/lib.rs" ] || continue
-  grep -q "TrackerSong = song" "${dir}src/lib.rs" || continue
+for name in $TRACKS; do
+  dir="examples/$name/"
   wasm="${dir}target/wasm32-wasip2/release/$(echo "$name" | tr '-' '_').wasm"
   echo "==> $name"
   ( cd "$dir" && cargo build --target wasm32-wasip2 --release -q )

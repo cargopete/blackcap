@@ -15,6 +15,9 @@ ROOT = Path(__file__).resolve().parent.parent
 EXAMPLES = ROOT / "examples"
 OUT = Path(__file__).resolve().parent / "tracks.json"
 
+# Only these cartridges appear in the web jukebox.
+INCLUDE = {"blackstar", "sampled-guitar", "featherz"}
+
 
 def matching_block(src: str, open_idx: int) -> str:
     """Given the index of a '{', return the text up to its matching '}'."""
@@ -46,14 +49,15 @@ def parse_song(src: str):
     rpb = int(re.search(r"rows_per_beat:\s*(\d+)", block).group(1))
 
     patterns = []
-    for pm in re.finditer(r'pattern\s+"([^"]+)"\s*\{', block):
+    for pm in re.finditer(r'pattern\s+"([^"]+)"\s*(?:@\s*(\d+)\s*)?\{', block):
         name = pm.group(1)
+        tempo = int(pm.group(2)) if pm.group(2) else None  # per-pattern override
         body = matching_block(block, pm.end() - 1)
         lanes = [
             {"name": ln, "cells": cells}
             for ln, cells in re.findall(r'(\w+)\s*:\s*"([^"]*)"', body)
         ]
-        patterns.append({"name": name, "lanes": lanes})
+        patterns.append({"name": name, "tempo": tempo, "lanes": lanes})
 
     seq_m = re.search(r"sequence:\s*\[(.*?)\]", block, re.DOTALL)
     sequence = [s.strip() for s in seq_m.group(1).split(",") if s.strip()]
@@ -64,6 +68,8 @@ def parse_song(src: str):
 def main():
     tracks = []
     for ex in sorted(EXAMPLES.iterdir()):
+        if ex.name not in INCLUDE:
+            continue
         lib = ex / "src" / "lib.rs"
         if not lib.is_file():
             continue

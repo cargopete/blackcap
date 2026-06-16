@@ -104,7 +104,10 @@ fn parse_lane(s: &str) -> Result<Vec<Cell>, String> {
 }
 
 type LaneDef = (&'static str, &'static str);
-type PatternDef = (&'static str, &'static [LaneDef]);
+/// (name, tempo-override-bpm [0 = use the song's global tempo], lanes).
+/// A per-pattern tempo lets a breakdown literally drop to half-time, the way a
+/// real metalcore/deathcore breakdown does.
+type PatternDef = (&'static str, u32, &'static [LaneDef]);
 
 /// Raw, `const`-constructible song: lane strings plus tempo and a play order.
 pub struct TrackerSong {
@@ -129,31 +132,36 @@ impl TrackerSong {
         }
     }
 
+    /// Frames per row at the song's global tempo. Patterns with a tempo
+    /// override compute their own.
     pub fn frames_per_row(&self, sample_rate: u32) -> f64 {
         60.0 * sample_rate as f64 / (self.bpm as f64 * self.rows_per_beat as f64)
     }
 
     /// Parse all lanes and resolve row positions into absolute frames.
+    ///
+    /// Frames (not rows) accumulate across the sequence, because each pattern may
+    /// run at its own tempo — a slower breakdown takes more frames per row.
     pub fn compile(&self, sample_rate: u32) -> Result<CompiledSong, String> {
-        let fpr = self.frames_per_row(sample_rate);
         let mut events = Vec::new();
-        let mut cursor_row: u64 = 0;
+        let mut cursor_frame: f64 = 0.0;
 
         for &pat_name in self.sequence {
-            let lanes = self
+            let pat = self
                 .patterns
                 .iter()
                 .find(|p| p.0 == pat_name)
-                .ok_or_else(|| format!("sequence references unknown pattern \"{pat_name}\""))?
-                .1;
+                .ok_or_else(|| format!("sequence references unknown pattern \"{pat_name}\""))?;
+            let tempo = if pat.1 == 0 { self.bpm } else { pat.1 as f32 };
+            let fpr = 60.0 * sample_rate as f64 / (tempo as f64 * self.rows_per_beat as f64);
 
             let mut pattern_rows = 0u64;
-            for &(lane_name, lane_str) in lanes {
+            for &(lane_name, lane_str) in pat.2 {
                 let cells = parse_lane(lane_str)
                     .map_err(|e| format!("pattern \"{pat_name}\" lane \"{lane_name}\": {e}"))?;
                 pattern_rows = pattern_rows.max(cells.len() as u64);
                 for (row, cell) in cells.into_iter().enumerate() {
-                    let frame = ((cursor_row + row as u64) as f64 * fpr) as u64;
+                    let frame = (cursor_frame + row as f64 * fpr) as u64;
                     events.push(Event {
                         frame,
                         lane: lane_name,
@@ -161,13 +169,13 @@ impl TrackerSong {
                     });
                 }
             }
-            cursor_row += pattern_rows;
+            cursor_frame += pattern_rows as f64 * fpr;
         }
 
         events.sort_by_key(|e| e.frame);
         Ok(CompiledSong {
             events,
-            duration: (cursor_row as f64 * fpr) as u64,
+            duration: cursor_frame as u64,
         })
     }
 }
@@ -241,7 +249,7 @@ mod tests {
         let song = TrackerSong::from_parts(
             120.0,
             4,
-            &[("p", &[("lead", "c4 - - -"), ("hat", "x x x x")])],
+            &[("p", 0, &[("lead", "c4 - - -"), ("hat", "x x x x")])],
             &["p", "p"],
         );
         // 120 bpm, 4 rows/beat, 48k → 6000 frames/row.
@@ -260,12 +268,41 @@ mod tests {
 
     #[test]
     fn compile_rejects_unknown_pattern() {
-        let song = TrackerSong::from_parts(120.0, 4, &[("p", &[("a", "x")])], &["missing"]);
+        let song = TrackerSong::from_parts(120.0, 4, &[("p", 0, &[("a", "x")])], &["missing"]);
         assert!(song.compile(48_000).is_err());
+    }
+
+    #[test]
+    fn per_pattern_tempo_slows_a_section() {
+        // "fast" at the global 120 bpm; "slow" overridden to 60 bpm (half-time).
+        let song = TrackerSong::from_parts(
+            120.0,
+            4,
+            &[
+                ("fast", 0, &[("c", "x x x x")]),
+                ("slow", 60, &[("c", "x x x x")]),
+            ],
+            &["fast", "slow"],
+        );
+        let compiled = song.compile(48_000).unwrap();
+        // fast: 4 rows × 6000 = 24000 frames; slow: 4 rows × 12000 = 48000.
+        assert_eq!(compiled.duration_frames(), 72_000);
+        // The slow section's first hit lands exactly where the fast one ends.
+        let slow_hits: Vec<_> = compiled
+            .events()
+            .iter()
+            .filter(|e| e.frame >= 24_000)
+            .collect();
+        assert_eq!(slow_hits[0].frame, 24_000);
+        assert_eq!(slow_hits[1].frame, 36_000); // 12000 frames/row, not 6000
     }
 }
 
 /// Build a [`TrackerSong`] from a tracker-style block. See module docs.
+///
+/// A pattern may carry an optional tempo override: `pattern "drop" @132 { … }`
+/// runs that pattern at 132 bpm regardless of the song tempo — the way a real
+/// breakdown drops to half-time. Omit it to inherit the global tempo.
 ///
 /// ```ignore
 /// const SONG: TrackerSong = song! {
@@ -275,21 +312,31 @@ mod tests {
 ///         lead: "c5 - eb5 g5  bb5 - g5 eb5";
 ///         hat:  "x x x x  x x x x";
 ///     }
-///     sequence: [a, a];
+///     pattern "breakdown" @120 {   // slower than the song
+///         chug: "a1 - - -  - - - -";
+///     }
+///     sequence: [a, a, breakdown];
 /// };
 /// ```
 #[macro_export]
 macro_rules! song {
+    // internal: resolve an optional per-pattern tempo to a u32 (0 = global).
+    (@tempo) => { 0u32 };
+    (@tempo $t:literal) => { $t as u32 };
     (
         tempo: $bpm:expr;
         rows_per_beat: $rpb:expr;
-        $( pattern $name:literal { $( $lane:ident : $pat:literal ; )+ } )+
+        $( pattern $name:literal $(@ $ptempo:literal)? { $( $lane:ident : $pat:literal ; )+ } )+
         sequence: [ $( $seq:ident ),+ $(,)? ] $(;)?
     ) => {
         $crate::song::TrackerSong::from_parts(
             $bpm as f32,
             $rpb as u32,
-            &[ $( ( $name, &[ $( (stringify!($lane), $pat) ),+ ] ) ),+ ],
+            &[ $( (
+                $name,
+                $crate::song!(@tempo $($ptempo)?),
+                &[ $( (stringify!($lane), $pat) ),+ ]
+            ) ),+ ],
             &[ $( stringify!($seq) ),+ ],
         )
     };

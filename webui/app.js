@@ -2,10 +2,8 @@
 
 let SR = 48000;
 let track = null;       // selected track
-let timeline = [];      // [{name, pattern, startRow, rows}]
-let totalRows = 0;
-let fpr = 0;            // frames per row
-let durationSec = 0;
+let timeline = [];      // [{name, pattern, startSec, durSec, rows, secPerRow}]
+let durationSec = 0;    // total, from song maths
 let trackerPattern = null;
 let trackerCols = [];   // column index -> [cell elements]
 let activeCol = -1;
@@ -79,19 +77,22 @@ function selectTrack(t, li) {
   [...$("cartridge-list").children].forEach((el) => el.classList.remove("active"));
   if (li) li.classList.add("active");
 
-  fpr = (60 * SR) / (t.tempo * t.rows_per_beat);
+  // Build a time-based timeline: each pattern may run at its own tempo, so a
+  // slower breakdown takes more seconds (and shows wider in the bones).
   const byName = Object.fromEntries(t.patterns.map((p) => [p.name, p]));
   timeline = [];
-  let row = 0;
+  let sec = 0;
   for (const name of t.sequence) {
     const p = byName[name];
     if (!p) continue;
     const rows = patternRows(p);
-    timeline.push({ name, pattern: p, startRow: row, rows });
-    row += rows;
+    const tempo = p.tempo || t.tempo;
+    const secPerRow = 60 / (tempo * t.rows_per_beat);
+    const durSec = rows * secPerRow;
+    timeline.push({ name, pattern: p, startSec: sec, durSec, rows, secPerRow });
+    sec += durSec;
   }
-  totalRows = row;
-  durationSec = (totalRows * fpr) / SR;
+  durationSec = sec;
 
   $("np-title").textContent = t.title;
   $("np-tags").textContent = t.tags.join("  ·  ");
@@ -100,7 +101,7 @@ function selectTrack(t, li) {
   renderArrangement();
   renderLegend();
   trackerPattern = null;
-  renderFromRow(0);
+  renderFromFrac(0);
 
   if (t.hasWav) {
     audio.src = t.wav;
@@ -118,7 +119,7 @@ function renderArrangement() {
   for (const seg of timeline) {
     const div = document.createElement("div");
     div.className = "seg";
-    div.style.flex = `${seg.rows} 0 0`;
+    div.style.flex = `${seg.durSec} 0 0`;
     div.style.setProperty("--c", patternColor(seg.name));
     const label = document.createElement("span");
     label.textContent = seg.name;
@@ -176,17 +177,17 @@ function highlightCol(col) {
   activeCol = col;
 }
 
-// Place everything according to a global row index.
-function renderFromRow(row) {
-  let segIdx = timeline.findIndex((s) => row < s.startRow + s.rows);
-  if (segIdx < 0) segIdx = timeline.length - 1;
-  const seg = timeline[segIdx];
+// Place the playhead + tracker according to a fraction (0..1) of the song.
+function renderFromFrac(frac) {
+  const sec = frac * durationSec;
+  let seg = timeline.find((s) => sec < s.startSec + s.durSec) || timeline[timeline.length - 1];
+  if (!seg) return;
   if (seg.pattern !== trackerPattern) {
     trackerPattern = seg.pattern;
     renderTracker(seg.pattern, -1);
   }
-  highlightCol(Math.floor(row - seg.startRow));
-  $("playhead").style.left = `${(row / totalRows) * 100}%`;
+  highlightCol(Math.floor((sec - seg.startSec) / seg.secPerRow));
+  $("playhead").style.left = `${frac * 100}%`;
 }
 
 // Prefer the real rendered length; fall back to the song-maths estimate.
@@ -199,7 +200,7 @@ function seekToFrac(frac) {
     audio.currentTime = frac * audioDur();
     $("clock").textContent = `${mmss(frac * audioDur())} / ${mmss(audioDur())}`;
   }
-  renderFromRow(frac * totalRows);
+  renderFromFrac(frac);
 }
 
 // --- audio + live loop -----------------------------------------------------
@@ -236,7 +237,7 @@ function frame() {
   if (track) {
     if (!audio.paused) {
       const d = audioDur();
-      renderFromRow((audio.currentTime / d) * totalRows);
+      renderFromFrac(audio.currentTime / d);
       $("clock").textContent = `${mmss(audio.currentTime)} / ${mmss(d)}`;
     }
     drawScope();
