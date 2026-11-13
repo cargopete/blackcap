@@ -1,0 +1,99 @@
+# yatr - https://github.com/cargopete/yatr
+#
+# The justfile's recipes, minus the per-cartridge arguments yatr has no way to
+# take: cartridges builds all of them, smoke dry-runs one.
+
+[env]
+CARGO_TERM_COLOR = "always"
+
+[settings]
+cache = true
+
+[tasks.fmt]
+desc = "Format the host and the SDK"
+run = ["cargo fmt --all", "cargo fmt --manifest-path crates/sdk/Cargo.toml"]
+no_cache = true
+
+[tasks.fmt-check]
+desc = "Fail if the host or the SDK is unformatted"
+run = ["cargo fmt --all --check", "cargo fmt --manifest-path crates/sdk/Cargo.toml --check"]
+sources = ["crates/**/*.rs"]
+
+[tasks.lint]
+desc = "Clippy on the host and the SDK, warnings denied"
+parallel = true
+run = [
+    "cargo clippy -p blackcap --all-targets -- -D warnings",
+    "cargo clippy --manifest-path crates/sdk/Cargo.toml --all-targets -- -D warnings",
+]
+sources = ["crates/**", "wit/**", "Cargo.toml", "Cargo.lock"]
+
+[tasks.test]
+desc = "Unit tests, host and SDK"
+parallel = true
+run = ["cargo test -p blackcap", "cargo test --manifest-path crates/sdk/Cargo.toml"]
+sources = ["crates/**", "wit/**", "Cargo.toml", "Cargo.lock"]
+watch = ["crates/**", "wit/**"]
+
+[tasks.cartridges]
+desc = "Build every cartridge in examples/ to a wasm32-wasip2 component"
+parallel = true
+run = [
+    "cargo build --manifest-path examples/arpeggio-cartridge/Cargo.toml --target wasm32-wasip2 --release",
+    "cargo build --manifest-path examples/blackstar/Cargo.toml --target wasm32-wasip2 --release",
+    "cargo build --manifest-path examples/breakdown-cartridge/Cargo.toml --target wasm32-wasip2 --release",
+    "cargo build --manifest-path examples/featherz/Cargo.toml --target wasm32-wasip2 --release",
+    "cargo build --manifest-path examples/host-dsp-cartridge/Cargo.toml --target wasm32-wasip2 --release",
+    "cargo build --manifest-path examples/multisampled-guitar/Cargo.toml --target wasm32-wasip2 --release",
+    "cargo build --manifest-path examples/sampled-guitar/Cargo.toml --target wasm32-wasip2 --release",
+    "cargo build --manifest-path examples/severance/Cargo.toml --target wasm32-wasip2 --release",
+    "cargo build --manifest-path examples/sine-cartridge/Cargo.toml --target wasm32-wasip2 --release",
+    "cargo build --manifest-path examples/synthcore-track/Cargo.toml --target wasm32-wasip2 --release",
+]
+sources = ["examples/**", "crates/sdk/**", "wit/**"]
+outputs = ["examples/*/target/wasm32-wasip2/release/*.wasm"]
+
+[tasks.smoke]
+desc = "Headless dry-run of the arpeggio cartridge, no audio device"
+depends = ["cartridges"]
+run = ["cargo run -p blackcap -- examples/arpeggio-cartridge/target/wasm32-wasip2/release/arpeggio_cartridge.wasm --dry-run --blocks 8"]
+sources = ["crates/host/**", "wit/**", "Cargo.toml", "Cargo.lock"]
+
+[tasks.sine]
+desc = "Play the built-in sine through the speakers"
+foreground = true
+run = ["cargo run -p blackcap --release -- --sine"]
+
+[tasks.tui]
+desc = "The ratatui front-end"
+foreground = true
+run = ["cargo run -p blackcap --release -- --tui"]
+
+[tasks.jukebox]
+desc = "Watch ~/.jukebox/cartridges and crossfade to new drops"
+foreground = true
+run = ["cargo run -p blackcap --release -- --watch"]
+
+[tasks.webui]
+desc = "Render the web jukebox's tracks and tracks.json (release host)"
+run = ["./webui/build.sh"]
+sources = ["crates/host/**", "crates/sdk/**", "examples/**", "wit/**", "webui/build.sh", "webui/extract.py", "Cargo.toml", "Cargo.lock"]
+outputs = ["webui/tracks/**", "webui/tracks.json"]
+
+[tasks.webui-serve]
+desc = "Serve the web jukebox on :8080"
+depends = ["webui"]
+foreground = true
+run = ["python3 webui/serve.py 8080"]
+
+[tasks.video]
+desc = "Title-card 1080p MP4 of featherz into media/ (ffmpeg)"
+depends = ["webui"]
+run = ["./make-video.sh"]
+sources = ["make-video.sh"]
+outputs = ["media/featherz.mp4"]
+
+[tasks.ci]
+desc = "fmt-check, lint, test, smoke"
+depends = ["fmt-check", "lint", "test", "smoke"]
+run = []
